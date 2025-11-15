@@ -2,32 +2,29 @@
 
 Hackathon project for a web dashboard orchestrating Jira + GitHub AI workflows.
 
-## Apps
+## Project layout
 
-- `apps/dashboard/` – Next.js App Router dashboard with Tailwind styling. It
-  prototypes the idea capture flow, MCP conversation builder, and integration
-  hand-offs to Jira + GitHub Copilot.
-- `apps/server/` – Fastify backend that exposes `/api/chat` (and later MCP,
-  Jira, GitHub integrations). The dashboard proxies through this backend.
+| Path              | Description                                                                 |
+| ----------------- | --------------------------------------------------------------------------- |
+| `apps/dashboard`  | Next.js App Router client (idea capture, workflow chat, Jira/GitHub handoff) |
+| `apps/server`     | Fastify backend exposing `/api/chat` (future MCP/Jira/GitHub integrations)   |
 
-## Getting started
+## Dashboard (client)
 
 ```bash
 cd apps/dashboard
 npm install
-npm run dev
+npm run dev          # or npm run dev:open to auto-launch the browser
 ```
 
-> If the default npm CLI fails in your environment, you can use `pnpm` or `yarn`
-> instead; the project does not depend on a specific package manager.
+The client proxies chat requests through its API route to the backend. Override
+the target via `apps/dashboard/.env.local`:
 
-For a one-command launch that auto-opens your browser:
-
-```bash
-npm run dev:open
+```
+CHAT_API_BASE_URL=http://localhost:4000
 ```
 
-### Backend
+## Backend (server)
 
 ```bash
 cd apps/server
@@ -35,19 +32,20 @@ npm install
 npm run dev
 ```
 
-By default the dashboard proxies chat requests to `http://localhost:4000/api/chat`.
-Override with `CHAT_API_BASE_URL` (or `SERVER_BASE_URL`) in `apps/dashboard/.env.local`
-when deploying.
+The Fastify server listens on `http://localhost:4000` by default and exposes:
 
-### Run entire stack + open browser
+- `GET /healthz` – simple health check
+- `POST /api/chat` – returns a canned assistant response (placeholder for MCP/Jira logic)
 
-From the repo root you can boot both services at once (backend + dashboard) and
-auto-open the browser:
+## Run entire stack
+
+From the repo root you can boot both services concurrently:
 
 ```bash
-npm install  # once, to install workspace deps
-npm run dev:stack:open
+npm install          # once, install workspace dependencies
+npm run dev:stack    # starts server + client
+npm run dev:stack:open   # same as above but opens http://localhost:3000
 ```
 
-If you only want both servers without auto-opening the browser, use
-`npm run dev:stack`.
+When deploying, set `SERVER_BASE_URL` or `CHAT_API_BASE_URL` so the dashboard
+knows where to reach the backend.
