@@ -136,6 +136,7 @@ export default function WorkflowPage() {
   const [chatWidthPct, setChatWidthPct] = useState(64);
   const [resizing, setResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isReplying, setIsReplying] = useState(false);
 
   const summary = useMemo(
     () => ({
@@ -159,6 +160,32 @@ export default function WorkflowPage() {
     };
     setMessages((prev) => [...prev, newMessage]);
     setDraft("");
+    setIsReplying(true);
+
+    fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workItemType,
+        messages: [...messages, newMessage],
+      }),
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Failed to get reply");
+        const assistantMessage = (await res.json()) as ChatMessage;
+        setMessages((prev) => [...prev, assistantMessage]);
+      })
+      .catch(() => {
+        const fallback: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            "Something went wrong while replying. Try again in a few seconds.",
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, fallback]);
+      })
+      .finally(() => setIsReplying(false));
   };
 
   const handleTypeChange = (type: WorkItemType) => {
@@ -241,7 +268,9 @@ export default function WorkflowPage() {
             className="border-t border-white/10 px-5 py-4"
             onSubmit={(event) => {
               event.preventDefault();
-              sendMessage();
+              if (!isReplying) {
+                sendMessage();
+              }
             }}
           >
             <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-4 py-2 shadow-inner shadow-black/20">
@@ -253,9 +282,10 @@ export default function WorkflowPage() {
               />
               <button
                 type="submit"
-                className="rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-5 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90"
+                disabled={isReplying}
+                className="rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-5 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50"
               >
-                Send
+                {isReplying ? "Waiting..." : "Send"}
               </button>
             </div>
           </form>
