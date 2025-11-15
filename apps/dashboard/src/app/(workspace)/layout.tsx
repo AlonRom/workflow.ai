@@ -42,7 +42,7 @@ export default function WorkspaceLayout({
   }, [isResizing]);
 
   return (
-    <div className="flex min-h-screen bg-[radial-gradient(circle_at_top,_#3a0ca3_0%,_#0b0221_45%,_#050111_80%)] text-white">
+    <div className="flex h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_#3a0ca3_0%,_#0b0221_45%,_#050111_80%)] text-white">
       <aside
         className="hidden flex-col border-r border-white/10 bg-white/5 px-6 py-8 backdrop-blur-xl md:flex"
         style={{ width: sidebarWidth }}
@@ -91,15 +91,17 @@ export default function WorkspaceLayout({
       </aside>
 
       <div
-        className="hidden cursor-col-resize items-center justify-center px-1 md:flex"
+        className="hidden cursor-col-resize items-center justify-center px-2 md:flex"
         onMouseDown={() => setIsResizing(true)}
       >
-        <span
-          className={`h-28 w-1 rounded-full bg-white/20 transition ${isResizing ? "bg-white/60" : "hover:bg-white/40"}`}
+        <div
+          className={`h-48 w-[3px] rounded-full bg-gradient-to-b from-white/50 via-white/20 to-transparent shadow-[0_0_20px_rgba(176,137,255,0.6)] transition duration-200 ${
+            isResizing ? "opacity-90" : "opacity-60 hover:opacity-90"
+          }`}
         />
       </div>
 
-      <main className="flex flex-1 flex-col gap-8 px-5 py-8 md:px-10">
+      <main className="flex flex-1 flex-col gap-8 px-5 py-8 md:px-10 overflow-hidden min-h-0">
         {children}
       </main>
     </div>

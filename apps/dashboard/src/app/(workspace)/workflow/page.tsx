@@ -136,6 +136,7 @@ export default function WorkflowPage() {
   const [chatWidthPct, setChatWidthPct] = useState(64);
   const [resizing, setResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isReplying, setIsReplying] = useState(false);
 
   const summary = useMemo(
@@ -214,8 +215,12 @@ export default function WorkflowPage() {
     };
   }, [resizing]);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   return (
-    <>
+    <div className="flex flex-1 flex-col gap-8 overflow-hidden min-h-0">
       <SectionHeader
         tag={section.tag}
         title={section.title}
@@ -224,11 +229,11 @@ export default function WorkflowPage() {
 
       <div
         ref={containerRef}
-        className="flex flex-1 gap-4"
+        className="flex flex-1 gap-4 overflow-hidden"
         style={{ minHeight: 0 }}
       >
         <section
-          className="glass-panel flex flex-col overflow-hidden rounded-[36px] border border-white/10 bg-gradient-to-br from-white/10 via-white/5 to-white/0"
+          className="glass-panel flex h-full flex-col overflow-hidden rounded-[36px] border border-white/10 bg-gradient-to-br from-white/10 via-white/5 to-white/0"
           style={{ flexBasis: `${chatWidthPct}%` }}
         >
           <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 px-6 py-4">
@@ -258,10 +263,11 @@ export default function WorkflowPage() {
             </div>
           </header>
 
-          <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
+          <div className="chat-scroll flex-1 min-h-0 space-y-6 overflow-y-auto px-6 py-6">
             {messages.map((message) => (
               <ChatBubble key={message.id} message={message} />
             ))}
+            <div ref={messagesEndRef} />
           </div>
 
           <form
@@ -292,11 +298,13 @@ export default function WorkflowPage() {
         </section>
 
         <div
-          className="hidden cursor-col-resize items-center justify-center px-1 lg:flex"
+          className="hidden cursor-col-resize items-center justify-center px-2 lg:flex"
           onMouseDown={() => setResizing(true)}
         >
-          <span
-            className={`h-28 w-1 rounded-full bg-white/20 transition ${resizing ? "bg-white/60" : "hover:bg-white/40"}`}
+          <div
+            className={`h-48 w-[3px] rounded-full bg-gradient-to-b from-white/50 via-white/20 to-transparent shadow-[0_0_20px_rgba(176,137,255,0.6)] transition duration-200 ${
+              resizing ? "opacity-90" : "opacity-60 hover:opacity-90"
+            }`}
           />
         </div>
 
@@ -376,7 +384,7 @@ export default function WorkflowPage() {
           </form>
         </aside>
       </div>
-    </>
+    </div>
   );
 }
 
