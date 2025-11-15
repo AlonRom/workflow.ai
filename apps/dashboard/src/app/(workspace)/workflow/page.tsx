@@ -138,6 +138,12 @@ export default function WorkflowPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isReplying, setIsReplying] = useState(false);
+  const [jiraState, setJiraState] = useState<
+    | { status: "idle" }
+    | { status: "creating" }
+    | { status: "success"; key: string; url: string }
+    | { status: "error"; message: string }
+  >({ status: "idle" });
 
   const summary = useMemo(
     () => ({
@@ -195,6 +201,33 @@ export default function WorkflowPage() {
       ...workItemTemplates[type],
       acceptance: [...workItemTemplates[type].acceptance],
     });
+  };
+
+  const createJiraIssue = async () => {
+    if (jiraState.status === "creating") return;
+    setJiraState({ status: "creating" });
+    try {
+      const res = await fetch("/api/jira", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workItemType,
+          title: workItem.title,
+          description: workItem.description,
+          acceptance: workItem.acceptance,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error("Failed to create issue");
+      }
+      const data = (await res.json()) as { key: string; url: string };
+      setJiraState({ status: "success", ...data });
+    } catch (error) {
+      setJiraState({
+        status: "error",
+        message: "Unable to create Jira issue. Try again soon.",
+      });
+    }
   };
 
   useEffect(() => {
@@ -373,12 +406,29 @@ export default function WorkflowPage() {
               </div>
             </div>
             <div className="flex-1" />
-            <div className="flex justify-end pt-4">
+            <div className="flex flex-col gap-2 pt-4">
+              {jiraState.status === "success" ? (
+                <a
+                  href={jiraState.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs uppercase tracking-[0.3em] text-green-200"
+                >
+                  {workItemTemplates[workItemType].label}: {workItem.title} created →
+                </a>
+              ) : null}
+              {jiraState.status === "error" ? (
+                <p className="text-xs text-red-300">{jiraState.message}</p>
+              ) : null}
               <button
                 type="button"
-                className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-6 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90"
+                onClick={createJiraIssue}
+                disabled={jiraState.status === "creating"}
+                className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-6 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50"
               >
-                Create {workItemTemplates[workItemType].label} in Jira
+                {jiraState.status === "creating"
+                  ? "Creating..."
+                  : `Create ${workItemTemplates[workItemType].label} in Jira`}
               </button>
             </div>
           </form>

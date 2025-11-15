@@ -36,6 +36,19 @@ The Fastify server listens on `http://localhost:4000` by default and exposes:
 
 - `GET /healthz` – simple health check
 - `POST /api/chat` – returns a canned assistant response (placeholder for MCP/Jira logic)
+- `POST /api/jira/issues` – creates Jira issues using the configured project
+
+Create `apps/server/.env` (never commit it) with:
+
+```
+JIRA_BASE_URL=https://<your-domain>.atlassian.net
+JIRA_PROJECT_KEY=SCRUM
+JIRA_EMAIL=you@example.com
+JIRA_API_TOKEN=your_api_token
+```
+
+The dashboard proxy reuses `CHAT_API_BASE_URL`/`SERVER_BASE_URL` to reach both chat
+and Jira endpoints.
 
 ## Run entire stack
 

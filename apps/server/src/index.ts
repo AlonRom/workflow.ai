@@ -1,11 +1,13 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { registerChatRoutes } from "./modules/chat/controller";
+import { registerJiraRoutes } from "./modules/jira/controller";
 
 async function buildServer() {
   const app = Fastify({ logger: true });
   await app.register(cors, { origin: true });
   await registerChatRoutes(app);
+  await registerJiraRoutes(app);
   app.get("/healthz", async () => ({ ok: true }));
   return app;
 }
