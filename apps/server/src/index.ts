@@ -1,7 +1,16 @@
+import dotenv from "dotenv";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { registerChatRoutes } from "./modules/chat/controller";
 import { registerJiraRoutes } from "./modules/jira/controller";
+
+// Load .env file before anything else
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const envFilePath =
+  process.env.SERVER_ENV_PATH ?? path.resolve(__dirname, "..", ".env");
+dotenv.config({ path: envFilePath });
 
 async function buildServer() {
   const app = Fastify({ logger: true });

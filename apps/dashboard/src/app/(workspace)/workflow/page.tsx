@@ -169,7 +169,19 @@ export default function WorkflowPage() {
     setDraft("");
     setIsReplying(true);
 
-    fetch("/api/chat", {
+    // Create a placeholder assistant message to append deltas
+    const assistantId = crypto.randomUUID();
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+
+    fetch("/api/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -178,19 +190,50 @@ export default function WorkflowPage() {
       }),
     })
       .then(async (res) => {
-        if (!res.ok) throw new Error("Failed to get reply");
-        const assistantMessage = (await res.json()) as ChatMessage;
-        setMessages((prev) => [...prev, assistantMessage]);
+        if (!res.body) throw new Error("No stream");
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+          for (const part of parts) {
+            if (!part.startsWith("data:")) continue;
+            const payload = part.slice(5).trim();
+            try {
+              const evt = JSON.parse(payload) as
+                | { type: "delta"; delta: string }
+                | { type: "done" };
+              if (evt.type === "delta") {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? { ...m, content: (m.content || "") + evt.delta }
+                      : m,
+                  ),
+                );
+              }
+            } catch {
+              // ignore bad chunks
+            }
+          }
+        }
       })
       .catch(() => {
-        const fallback: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content:
-            "Something went wrong while replying. Try again in a few seconds.",
-          timestamp: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, fallback]);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  content:
+                    "Something went wrong while replying. Try again in a few seconds.",
+                }
+              : m,
+          ),
+        );
       })
       .finally(() => setIsReplying(false));
   };
