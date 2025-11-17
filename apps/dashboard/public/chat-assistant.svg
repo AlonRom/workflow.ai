@@ -1,0 +1,41 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="botGradient" x1="16" y1="16" x2="112" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5B21FF" />
+      <stop offset="1" stop-color="#06B6D4" />
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="32" fill="white"/>
+  <path
+    d="M28 61C28 47.745 38.745 37 52 37H76C89.255 37 100 47.745 100 61V79C100 92.255 89.255 103 76 103H52C38.745 103 28 92.255 28 79V61Z"
+    stroke="url(#botGradient)"
+    stroke-width="6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+  <rect x="38" y="51" width="52" height="38" rx="12" stroke="url(#botGradient)" stroke-width="6" fill="none"/>
+  <circle cx="56" cy="70" r="5" fill="url(#botGradient)"/>
+  <circle cx="72" cy="70" r="5" fill="url(#botGradient)"/>
+  <rect x="58" y="82" width="12" height="6" rx="3" fill="url(#botGradient)"/>
+  <path
+    d="M28 62L20 66C17.7909 67.1046 16.5 69.324 16.5 71.75C16.5 78.1878 16.5 86.75 16.5 86.75"
+    stroke="url(#botGradient)"
+    stroke-width="5"
+    stroke-linecap="round"
+  />
+  <path
+    d="M100 62L108 66C110.209 67.1046 111.5 69.324 111.5 71.75C111.5 78.1878 111.5 86.75 111.5 86.75"
+    stroke="url(#botGradient)"
+    stroke-width="5"
+    stroke-linecap="round"
+  />
+  <path
+    d="M64 35V29"
+    stroke="url(#botGradient)"
+    stroke-width="6"
+    stroke-linecap="round"
+  />
+  <circle cx="64" cy="24" r="6" stroke="url(#botGradient)" stroke-width="4" fill="none"/>
+</svg>
+

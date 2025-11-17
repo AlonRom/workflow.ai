@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SectionHeader } from "@/components/SectionHeader";
 import { workspaceSectionMap } from "@/lib/workspace";
@@ -483,24 +484,65 @@ export default function WorkflowPage() {
 
 function ChatBubble({ message }: { message: ChatMessage }) {
   const isAssistant = message.role === "assistant";
+  const avatar = isAssistant
+    ? {
+        src: "/chat-assistant.svg",
+        alt: "Workflow assistant",
+        name: "Assistant",
+      }
+    : {
+        src: "/profile.jpeg",
+        alt: "Alon Rom",
+        name: "Alon Rom",
+      };
+
+  const baseWrapper =
+    "relative h-14 w-14 overflow-hidden rounded-full shadow-[0_8px_24px_rgba(0,0,0,0.25)]";
+  const wrapperClass = isAssistant
+    ? `${baseWrapper} bg-white shadow-[0_8px_24px_rgba(6,182,212,0.35)]`
+    : `${baseWrapper} border border-white/20 bg-white/5`;
+
   return (
     <article
-      className={`flex flex-col gap-2 ${
-        isAssistant ? "items-start" : "items-end"
+      className={`flex items-start gap-4 ${
+        isAssistant ? "flex-row" : "flex-row-reverse"
       }`}
     >
+      <div className="flex w-20 flex-col items-center gap-1 text-[10px] uppercase tracking-[0.25em] text-white/60">
+        <div className={wrapperClass}>
+          <Image
+            src={avatar.src}
+            alt={avatar.alt}
+            fill
+            sizes="56px"
+            className={isAssistant ? "object-contain p-2" : "object-cover"}
+            priority={false}
+          />
+        </div>
+        <span className="text-center leading-tight">{avatar.name}</span>
+      </div>
       <div
-        className={`max-w-[85%] rounded-[28px] px-5 py-4 text-sm leading-relaxed shadow-lg ${
-          isAssistant
-            ? "rounded-tl-none bg-white/10 text-white/80"
-            : "rounded-tr-none bg-gradient-to-br from-[#c084fc] to-[#7c3aed] text-white"
+        className={`flex max-w-[70%] flex-col gap-2 ${
+          isAssistant ? "items-start" : "items-end"
         }`}
       >
-        {message.content}
+        <div
+          className={`w-full rounded-[28px] px-5 py-4 text-sm leading-relaxed shadow-lg ${
+            isAssistant
+              ? "rounded-tl-none bg-white/10 text-white/80"
+              : "rounded-tr-none bg-gradient-to-br from-[#c084fc] to-[#7c3aed] text-white"
+          }`}
+        >
+          {message.content}
+        </div>
+        <span
+          className={`text-xs uppercase tracking-wide text-white/50 ${
+            isAssistant ? "text-left" : "text-right"
+          }`}
+        >
+          {message.timestamp}
+        </span>
       </div>
-      <span className="text-xs uppercase tracking-wide text-white/50">
-        {message.role} · {message.timestamp}
-      </span>
     </article>
   );
 }
