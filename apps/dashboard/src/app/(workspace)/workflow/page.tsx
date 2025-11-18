@@ -146,13 +146,6 @@ export default function WorkflowPage() {
     | { status: "success"; key: string; url: string }
     | { status: "error"; message: string }
   >({ status: "idle" });
-  const [figmaUrl, setFigmaUrl] = useState("");
-  const [figmaState, setFigmaState] = useState<
-    | { status: "idle" }
-    | { status: "fetching" }
-    | { status: "success" }
-    | { status: "error"; message: string }
-  >({ status: "idle" });
   const [isWorkItemReady, setIsWorkItemReady] = useState(false);
   const [hldState, setHldState] = useState<
     | { status: "idle" }
@@ -350,146 +343,6 @@ export default function WorkflowPage() {
     }
   };
 
-  const importFromFigma = async () => {
-    if (!figmaUrl.trim()) {
-      setFigmaState({
-        status: "error",
-        message: "Please enter a Figma URL",
-      });
-      return;
-    }
-
-    if (figmaState.status === "fetching") return;
-    setFigmaState({ status: "fetching" });
-
-    try {
-      // Fetch Figma file data
-      const res = await fetch("/api/figma", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: figmaUrl }),
-      });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "Failed to fetch Figma file");
-      }
-
-      const data = await res.json();
-
-      // Extract design information from Figma file
-      const fileName = data.name || "Untitled Design";
-      const title = `Design: ${fileName}`;
-
-      // Collect all node IDs from the document for SVG export
-      const nodeIds: string[] = [];
-      if (data.document?.children) {
-        for (const child of data.document.children) {
-          if (child.id) {
-            nodeIds.push(child.id);
-          }
-        }
-      }
-
-      // Fetch SVG content for the nodes
-      let svgContent = "";
-      if (nodeIds.length > 0) {
-        try {
-          const svgRes = await fetch("/api/figma/svgs", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: figmaUrl, nodeIds: nodeIds.slice(0, 5) }), // Limit to first 5 nodes
-          });
-
-          if (svgRes.ok) {
-            const svgs = await svgRes.json();
-            const svgTexts: string[] = [];
-
-            for (const [nodeId, svg] of Object.entries(svgs)) {
-              if (typeof svg === "string" && svg.trim()) {
-                svgTexts.push(`\n### SVG for Node ${nodeId}\n\n\`\`\`svg\n${svg}\n\`\`\``);
-              }
-            }
-
-            if (svgTexts.length > 0) {
-              svgContent = "\n\n## SVG Assets\n" + svgTexts.join("\n\n");
-            }
-          }
-        } catch (svgError) {
-          console.error("Failed to fetch SVGs:", svgError);
-          // Continue without SVGs
-        }
-      }
-
-      // Build narrative with design specifics and SVG content
-      const narrativeParts = [];
-      narrativeParts.push(`Figma Design: ${fileName}`);
-      narrativeParts.push(`\nSource: ${figmaUrl}`);
-
-      if (data.lastModified) {
-        narrativeParts.push(`Last Modified: ${new Date(data.lastModified).toLocaleDateString()}`);
-      }
-
-      narrativeParts.push("\n## Design Structure\n");
-
-      if (data.document) {
-        narrativeParts.push(`Document Type: ${data.document.type || "N/A"}`);
-
-        if (data.document.children && data.document.children.length > 0) {
-          narrativeParts.push(`\nPages/Frames (${data.document.children.length}):`);
-          for (const [index, child] of data.document.children.slice(0, 10).entries()) {
-            narrativeParts.push(`${index + 1}. ${child.name || "Unnamed"} (${child.type || "unknown"})`);
-          }
-        }
-      }
-
-      if (data.components && Object.keys(data.components).length > 0) {
-        const componentCount = Object.keys(data.components).length;
-        narrativeParts.push(`\n## Components (${componentCount})\n`);
-        for (const [key, comp] of Object.entries(data.components).slice(0, 10) as [string, any][]) {
-          narrativeParts.push(`- ${comp.name || key}: ${comp.description || "No description"}`);
-        }
-      }
-
-      if (data.styles && Object.keys(data.styles).length > 0) {
-        const styleCount = Object.keys(data.styles).length;
-        narrativeParts.push(`\n## Styles (${styleCount})\n`);
-        for (const [key, style] of Object.entries(data.styles).slice(0, 10) as [string, any][]) {
-          narrativeParts.push(`- ${style.name || key}: ${style.styleType || "unknown type"}`);
-        }
-      }
-
-      // Add SVG content to narrative
-      if (svgContent) {
-        narrativeParts.push(svgContent);
-      }
-
-      const description = narrativeParts.join("\n");
-
-      // Update work item with Figma data and clear acceptance criteria
-      setWorkItem((prev) => ({
-        ...prev,
-        title,
-        description,
-        acceptance: [],
-      }));
-
-      setFigmaState({ status: "success" });
-
-      // Clear the URL input and reset Figma state after 3 seconds
-      setTimeout(() => {
-        setFigmaUrl("");
-        setFigmaState({ status: "idle" });
-      }, 3000);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to fetch Figma file. Please check the URL and try again.";
-      setFigmaState({
-        status: "error",
-        message,
-      });
-    }
-  };
-
   const generateHld = async (createInConfluence: boolean = true) => {
     if (hldState.status === "generating") return;
     setHldState({ status: "generating" });
@@ -509,8 +362,8 @@ export default function WorkflowPage() {
         throw new Error("Failed to generate HLD");
       }
       const data = (await res.json()) as { content: string; pageUrl?: string; pageId?: string };
-      setHldState({
-        status: "success",
+      setHldState({ 
+        status: "success", 
         content: data.content,
         pageUrl: data.pageUrl,
       });
@@ -706,50 +559,6 @@ export default function WorkflowPage() {
               </label>
             </div>
             <div className="flex flex-col gap-2 pt-4 flex-shrink-0">
-              {/* Figma Import Section */}
-              <div className="flex flex-col gap-2">
-                <label className="flex flex-col gap-2">
-                  <span className="text-xs uppercase tracking-[0.3em] text-white/50">
-                    Import from Figma
-                  </span>
-                  <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2">
-                    <input
-                      type="url"
-                      value={figmaUrl}
-                      onChange={(e) => setFigmaUrl(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && figmaUrl.trim()) {
-                          e.preventDefault();
-                          importFromFigma();
-                        }
-                      }}
-                      placeholder="Paste Figma URL and press Enter..."
-                      disabled={figmaState.status === "fetching"}
-                      className="flex-1 bg-transparent text-sm text-white placeholder:text-white/40 focus:outline-none disabled:opacity-50"
-                    />
-                    {figmaUrl.trim() && (
-                      <button
-                        type="button"
-                        onClick={importFromFigma}
-                        disabled={figmaState.status === "fetching"}
-                        className="rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50"
-                      >
-                        {figmaState.status === "fetching" ? "..." : "Import"}
-                      </button>
-                    )}
-                  </div>
-                </label>
-                {figmaState.status === "success" ? (
-                  <p className="text-xs uppercase tracking-[0.3em] text-green-200">
-                    ✓ Imported from Figma
-                  </p>
-                ) : null}
-                {figmaState.status === "error" ? (
-                  <p className="text-xs text-red-300">{figmaState.message}</p>
-                ) : null}
-              </div>
-
-              {/* Jira Section */}
               {jiraState.status === "success" ? (
                 <a
                   href={jiraState.url}
@@ -763,73 +572,126 @@ export default function WorkflowPage() {
               {jiraState.status === "error" ? (
                 <p className="text-xs text-red-300">{jiraState.message}</p>
               ) : null}
-              <button
-                type="button"
-                onClick={createJiraIssue}
-                disabled={jiraState.status === "creating"}
-                className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-6 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50"
-              >
-                {jiraState.status === "creating"
-                  ? "Creating..."
-                  : `Create in Jira`}
-              </button>
+              {hldState.status === "error" ? (
+                <p className="text-xs text-red-300">{hldState.message}</p>
+              ) : null}
+              {hldState.status === "success" && hldState.pageUrl ? (
+                <div>
+                  <a
+                    href={hldState.pageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs uppercase tracking-[0.3em] text-green-200"
+                  >
+                    HLD page created in Confluence →
+                  </a>
+                  <button
+                    type="button"
+                    onClick={copyHldToClipboard}
+                    className="mt-2 block rounded-full bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white/70 transition hover:bg-white/20 hover:text-white"
+                  >
+                    Copy HLD Content
+                  </button>
+                </div>
+              ) : hldState.status === "success" ? (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-[0.3em] text-white/70">
+                      Generated HLD
+                    </p>
+                    <button
+                      type="button"
+                      onClick={copyHldToClipboard}
+                      className="rounded-full bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white/70 transition hover:bg-white/20 hover:text-white"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <pre className="max-h-[400px] overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-white/80 whitespace-pre-wrap font-mono">
+                    {hldState.content}
+                  </pre>
+                </div>
+              ) : null}
+            </div>
+          </form>
 
-              <div className="mt-4 border-t border-white/10 pt-4">
+          <div className="border-t border-white/10 pt-4 mt-auto flex-shrink-0">
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs uppercase tracking-[0.3em] text-white/50 flex-1">Create work item in Jira</p>
+                <button
+                  type="button"
+                  onClick={createJiraIssue}
+                  disabled={jiraState.status === "creating"}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50 flex-shrink-0"
+                >
+                  <Image
+                    src="/jira.svg"
+                    alt="Jira"
+                    width={12}
+                    height={12}
+                    className="rounded-sm object-contain"
+                  />
+                  {jiraState.status === "creating" ? "..." : "Jira"}
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs uppercase tracking-[0.3em] text-white/50 flex-1">Generate HLD in Confluence</p>
                 <button
                   type="button"
                   onClick={() => generateHld(true)}
                   disabled={hldState.status === "generating"}
-                  className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-[#06b6d4] to-[#3b82f6] px-6 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50 flex-shrink-0"
                 >
-                  {hldState.status === "generating"
-                    ? "Creating HLD in Confluence..."
-                    : "Create HLD in Confluence"}
+                  <Image
+                    src="/confluence.svg"
+                    alt="Confluence"
+                    width={12}
+                    height={12}
+                    className="rounded-sm object-contain"
+                  />
+                  {hldState.status === "generating" ? "..." : "Confluence"}
                 </button>
+              </div>
 
-                {hldState.status === "error" ? (
-                  <p className="mt-2 text-xs text-red-300">{hldState.message}</p>
-                ) : null}
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs uppercase tracking-[0.3em] text-white/50 flex-1">Export design to Figma</p>
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50 flex-shrink-0"
+                >
+                  <Image
+                    src="/figma.png"
+                    alt="Figma"
+                    width={12}
+                    height={12}
+                    className="rounded-sm object-contain"
+                  />
+                  Figma
+                </button>
+              </div>
 
-                {hldState.status === "success" && hldState.pageUrl ? (
-                  <div className="mt-4">
-                    <a
-                      href={hldState.pageUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs uppercase tracking-[0.3em] text-green-200"
-                    >
-                      HLD page created in Confluence →
-                    </a>
-                    <button
-                      type="button"
-                      onClick={copyHldToClipboard}
-                      className="mt-2 block rounded-full bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white/70 transition hover:bg-white/20 hover:text-white"
-                    >
-                      Copy HLD Content
-                    </button>
-                  </div>
-                ) : hldState.status === "success" ? (
-                  <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <div className="mb-2 flex items-center justify-between">
-                      <p className="text-xs uppercase tracking-[0.3em] text-white/70">
-                        Generated HLD
-                      </p>
-                      <button
-                        type="button"
-                        onClick={copyHldToClipboard}
-                        className="rounded-full bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white/70 transition hover:bg-white/20 hover:text-white"
-                      >
-                        Copy
-                      </button>
-                    </div>
-                    <pre className="max-h-[400px] overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-white/80 whitespace-pre-wrap font-mono">
-                      {hldState.content}
-                    </pre>
-                  </div>
-                ) : null}
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs uppercase tracking-[0.3em] text-white/50 flex-1">Generate code with Copilot</p>
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50 flex-shrink-0"
+                >
+                  <Image
+                    src="/github-copilot.png"
+                    alt="Copilot"
+                    width={12}
+                    height={12}
+                    className="rounded-sm object-contain"
+                  />
+                  Copilot
+                </button>
               </div>
             </div>
-          </form>
+          </div>
         </aside>
       </div>
     </div>
