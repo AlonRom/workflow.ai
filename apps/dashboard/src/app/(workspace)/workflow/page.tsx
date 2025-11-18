@@ -147,6 +147,12 @@ export default function WorkflowPage() {
     | { status: "error"; message: string }
   >({ status: "idle" });
   const [isWorkItemReady, setIsWorkItemReady] = useState(false);
+  const [hldState, setHldState] = useState<
+    | { status: "idle" }
+    | { status: "generating" }
+    | { status: "success"; content: string; pageUrl?: string }
+    | { status: "error"; message: string }
+  >({ status: "idle" });
 
   const parseStructuredResponse = (content: string, type: WorkItemType) => {
     // Extract fields using regex to handle both multi-line and single-line formats
@@ -337,6 +343,44 @@ export default function WorkflowPage() {
     }
   };
 
+  const generateHld = async (createInConfluence: boolean = true) => {
+    if (hldState.status === "generating") return;
+    setHldState({ status: "generating" });
+    try {
+      const res = await fetch("/api/hld", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workItemType,
+          title: workItem.title,
+          description: workItem.description,
+          acceptance: workItem.acceptance,
+          createInConfluence,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error("Failed to generate HLD");
+      }
+      const data = (await res.json()) as { content: string; pageUrl?: string; pageId?: string };
+      setHldState({ 
+        status: "success", 
+        content: data.content,
+        pageUrl: data.pageUrl,
+      });
+    } catch (error) {
+      setHldState({
+        status: "error",
+        message: "Unable to generate HLD. Try again soon.",
+      });
+    }
+  };
+
+  const copyHldToClipboard = () => {
+    if (hldState.status === "success") {
+      navigator.clipboard.writeText(hldState.content);
+    }
+  };
+
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
@@ -462,56 +506,61 @@ export default function WorkflowPage() {
           </h3>
           <p className="mt-2 text-sm text-white/70">{summary.goal}</p>
 
-          <form className="mt-6 flex flex-1 flex-col space-y-5">
-            <label className="flex flex-col gap-2 text-sm text-white/70">
-              <span className="text-xs uppercase tracking-[0.3em] text-white/50">
-                {workItemTemplates[workItemType].titleLabel}
-              </span>
-              <input
-                value={workItem.title}
-                onChange={(event) =>
-                  setWorkItem((prev) => ({
-                    ...prev,
-                    title: event.target.value,
-                  }))
-                }
-                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-white focus:border-white/40 focus:outline-none"
-              />
-            </label>
+          <form className="mt-6 flex flex-1 flex-col space-y-5 overflow-y-auto min-h-0">
+            <div className="flex flex-col space-y-5 flex-shrink-0">
+              <label className="flex flex-col gap-2 text-sm text-white/70">
+                <span className="text-xs uppercase tracking-[0.3em] text-white/50">
+                  {workItemTemplates[workItemType].titleLabel}
+                </span>
+                <input
+                  value={workItem.title}
+                  onChange={(event) =>
+                    setWorkItem((prev) => ({
+                      ...prev,
+                      title: event.target.value,
+                    }))
+                  }
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-white focus:border-white/40 focus:outline-none"
+                />
+              </label>
 
-            <label className="flex flex-col gap-2 text-sm text-white/70">
-              <span className="text-xs uppercase tracking-[0.3em] text-white/50">
-                {workItemTemplates[workItemType].descriptionLabel}
-              </span>
-              <textarea
-                value={workItem.description}
-                onChange={(event) =>
-                  setWorkItem((prev) => ({
-                    ...prev,
-                    description: event.target.value,
-                  }))
-                }
-                className="min-h-[120px] rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-white focus:border-white/40 focus:outline-none"
-              />
-            </label>
+              <label className="flex flex-col gap-2 text-sm text-white/70">
+                <span className="text-xs uppercase tracking-[0.3em] text-white/50">
+                  {workItemTemplates[workItemType].descriptionLabel}
+                </span>
+                <textarea
+                  value={workItem.description}
+                  onChange={(event) =>
+                    setWorkItem((prev) => ({
+                      ...prev,
+                      description: event.target.value,
+                    }))
+                  }
+                  className="min-h-[120px] rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-white focus:border-white/40 focus:outline-none"
+                />
+              </label>
 
-            <div className="flex flex-col gap-2">
-              <span className="text-xs uppercase tracking-[0.3em] text-white/50">
-                {workItemTemplates[workItemType].listLabel}
-              </span>
-              <textarea
-                value={workItem.acceptance.join('\n\n')}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  const lines = value.split('\n\n').filter(l => l.trim());
-                  setWorkItem((prev) => ({ ...prev, acceptance: lines }));
-                }}
-                rows={Math.max(5, workItem.acceptance.length * 3)}
-                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white focus:border-white/40 focus:outline-none leading-relaxed"
-              />
+              <div className="flex flex-col gap-2">
+                <span className="text-xs uppercase tracking-[0.3em] text-white/50">
+                  {workItemTemplates[workItemType].listLabel}
+                </span>
+                <div className="space-y-3">
+                  {workItem.acceptance.map((criterion, index) => (
+                    <textarea
+                      key={index}
+                      value={criterion}
+                      onChange={(event) => {
+                        const next = [...workItem.acceptance];
+                        next[index] = event.target.value;
+                        setWorkItem((prev) => ({ ...prev, acceptance: next }));
+                      }}
+                      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white focus:border-white/40 focus:outline-none"
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
-            <div className="flex-1" />
-            <div className="flex flex-col gap-2 pt-4">
+            <div className="flex flex-col gap-2 pt-4 flex-shrink-0 mt-auto">
               {jiraState.status === "success" ? (
                 <a
                   href={jiraState.url}
@@ -535,6 +584,61 @@ export default function WorkflowPage() {
                   ? "Creating..."
                   : `Create ${workItemTemplates[workItemType].label} in Jira`}
               </button>
+              
+              <div className="mt-4 border-t border-white/10 pt-4">
+                <button
+                  type="button"
+                  onClick={() => generateHld(true)}
+                  disabled={hldState.status === "generating"}
+                  className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-[#06b6d4] to-[#3b82f6] px-6 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50"
+                >
+                  {hldState.status === "generating"
+                    ? "Creating HLD in Confluence..."
+                    : "Create HLD in Confluence"}
+                </button>
+                
+                {hldState.status === "error" ? (
+                  <p className="mt-2 text-xs text-red-300">{hldState.message}</p>
+                ) : null}
+                
+                {hldState.status === "success" && hldState.pageUrl ? (
+                  <div className="mt-4">
+                    <a
+                      href={hldState.pageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs uppercase tracking-[0.3em] text-green-200"
+                    >
+                      HLD page created in Confluence →
+                    </a>
+                    <button
+                      type="button"
+                      onClick={copyHldToClipboard}
+                      className="mt-2 block rounded-full bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white/70 transition hover:bg-white/20 hover:text-white"
+                    >
+                      Copy HLD Content
+                    </button>
+                  </div>
+                ) : hldState.status === "success" ? (
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-xs uppercase tracking-[0.3em] text-white/70">
+                        Generated HLD
+                      </p>
+                      <button
+                        type="button"
+                        onClick={copyHldToClipboard}
+                        className="rounded-full bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white/70 transition hover:bg-white/20 hover:text-white"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <pre className="max-h-[400px] overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-white/80 whitespace-pre-wrap font-mono">
+                      {hldState.content}
+                    </pre>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </form>
         </aside>
