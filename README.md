@@ -45,10 +45,32 @@ JIRA_BASE_URL=https://<your-domain>.atlassian.net
 JIRA_PROJECT_KEY=SCRUM
 JIRA_EMAIL=you@example.com
 JIRA_API_TOKEN=your_api_token
+
+# Optional: Confluence settings (if different from Jira)
+# If not set, will use Jira credentials and URL
+CONFLUENCE_BASE_URL=https://<your-domain>.atlassian.net/wiki
+CONFLUENCE_SPACE_KEY=YOUR_SPACE_KEY
+CONFLUENCE_EMAIL=you@example.com
+CONFLUENCE_API_TOKEN=your_api_token
 ```
+
+**Need help finding these values?**
+- See [GET_JIRA_CREDENTIALS.md](./GET_JIRA_CREDENTIALS.md) for API token and project key
+- See [WHERE_TO_GET_CREDENTIALS.md](./WHERE_TO_GET_CREDENTIALS.md) for Confluence values
 
 The dashboard proxy reuses `CHAT_API_BASE_URL`/`SERVER_BASE_URL` to reach both chat
 and Jira endpoints.
+
+## Creating Shared Jira + Confluence Space
+
+To set up a space shared between Jira and Confluence:
+
+1. See detailed guide: [CREATE_SHARED_SPACE.md](./CREATE_SHARED_SPACE.md)
+2. Quick version:
+   - Create Jira space with key (e.g., `ENG`)
+   - Create Confluence space with **same** key (`ENG`)
+   - Link them together in space settings
+   - Use the key in your `.env`: `JIRA_PROJECT_KEY=ENG`
 
 ## Run entire stack
 

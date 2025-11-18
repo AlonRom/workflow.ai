@@ -13,6 +13,10 @@ const envSchema = z.object({
   JIRA_PROJECT_KEY: z.string().min(1),
   JIRA_EMAIL: z.string().email(),
   JIRA_API_TOKEN: z.string().min(1),
+  CONFLUENCE_BASE_URL: z.string().url().optional(),
+  CONFLUENCE_SPACE_KEY: z.string().min(1).optional(),
+  CONFLUENCE_EMAIL: z.string().email().optional(),
+  CONFLUENCE_API_TOKEN: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -6,6 +6,7 @@ import cors from "@fastify/cors";
 import { registerChatRoutes } from "./modules/chat/controller.js";
 import { registerJiraRoutes } from "./modules/jira/controller.js";
 import { registerFigmaRoutes } from "./modules/figma/controller.js";
+import { registerHldRoutes } from "./modules/hld/controller.js";
 
 // Load .env file before anything else
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -19,6 +20,7 @@ async function buildServer() {
   await registerChatRoutes(app);
   await registerJiraRoutes(app);
   await registerFigmaRoutes(app);
+  await registerHldRoutes(app);
   app.get("/healthz", async () => ({ ok: true }));
   return app;
 }
