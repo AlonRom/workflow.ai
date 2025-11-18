@@ -56,7 +56,7 @@ const workItemTemplates: Record<string, WorkItemTemplate> = {
     label: "User Story",
     titleLabel: "Story Title",
     descriptionLabel: "Narrative",
-    listLabel: "Acceptance Criteria",
+    listLabel: "Acceptance Criteria:",
     title: "Workflow AI refinement lane",
     description:
       "As a hackathon squad lead, I want a chat-first workspace so we can evolve requirements with AI before pushing a Jira card.",
@@ -70,7 +70,7 @@ const workItemTemplates: Record<string, WorkItemTemplate> = {
     label: "Feature",
     titleLabel: "Feature Title",
     descriptionLabel: "Business Outcome",
-    listLabel: "Success Criteria",
+    listLabel: "Success Criteria:",
     title: "AI-assisted Jira intake",
     description:
       "Deliver a guided workflow where hackathon squads can author Jira-ready specs with AI moderation.",
@@ -84,7 +84,7 @@ const workItemTemplates: Record<string, WorkItemTemplate> = {
     label: "Epic",
     titleLabel: "Epic Title",
     descriptionLabel: "Epic Narrative",
-    listLabel: "Milestone Checks",
+    listLabel: "Milestone Checks:",
     title: "Workflow AI program rollout",
     description:
       "As the platform team, we want every hackathon squad to plan AI-to-Jira-to-GitHub handoffs within a single workspace.",
@@ -98,7 +98,7 @@ const workItemTemplates: Record<string, WorkItemTemplate> = {
     label: "Bug",
     titleLabel: "Bug Title",
     descriptionLabel: "Reproduction / Impact",
-    listLabel: "Fix Verification",
+    listLabel: "Fix Verification:",
     title: "[BUG] Jira sync fails for multi-project payloads",
     description:
       "Steps: 1) Capture idea 2) Include multiple Jira projects 3) Click Create in Jira → error 500. Impact: blocks cross-squad refinement.",
@@ -112,14 +112,14 @@ const workItemTemplates: Record<string, WorkItemTemplate> = {
     label: "Issue",
     titleLabel: "Work Item Title",
     descriptionLabel: "Details",
-    listLabel: "Definition of Done",
+    listLabel: "Steps:",
     title: "Capture observability for AI sessions",
     description:
       "Add logging + dashboards so we track AI session latency, quality, and Jira success rates.",
     acceptance: [
-      "Logs include session ID, tool usage, and duration.",
-      "Dashboard exposes latency + success KPIs.",
-      "Alerts fire if Create in Jira fails twice consecutively.",
+      "Implement logging for session ID, tool usage, and duration.",
+      "Create dashboard to expose latency and success KPIs.",
+      "Set up alerts for when Create in Jira fails twice consecutively.",
     ],
   },
 };
@@ -138,9 +138,7 @@ export default function WorkflowPage() {
   const [resizing, setResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatScrollRef = useRef<HTMLDivElement>(null);
-  const isInitialMount = useRef(true);
-  const prevMessagesLengthRef = useRef(initialMessages.length);
+  const messagesRef = useRef<ChatMessage[]>(initialMessages);
   const [isReplying, setIsReplying] = useState(false);
   const [jiraState, setJiraState] = useState<
     | { status: "idle" }
@@ -148,6 +146,54 @@ export default function WorkflowPage() {
     | { status: "success"; key: string; url: string }
     | { status: "error"; message: string }
   >({ status: "idle" });
+  const [isWorkItemReady, setIsWorkItemReady] = useState(false);
+
+  const parseStructuredResponse = (content: string, type: WorkItemType) => {
+    // Extract fields using regex to handle both multi-line and single-line formats
+    let title = '';
+    let description = '';
+    let list: string[] = [];
+
+    // Extract Title
+    const titleMatch = content.match(/Title:\s*(.+?)(?=\s*Description:|$)/is);
+    if (titleMatch) title = titleMatch[1].trim();
+
+    // Extract Description (everything between Description: and Acceptance Criteria:/Steps:)
+    const descMatch = content.match(/Description:\s*(.+?)(?=\s*Acceptance Criteria:|Steps:|$)/is);
+    if (descMatch) description = descMatch[1].trim();
+
+    // Extract Acceptance Criteria or Steps
+    if (type === 'story') {
+      const acMatch = content.match(/Acceptance Criteria:\s*(.+?)$/is);
+      if (acMatch) {
+        const acText = acMatch[1].trim();
+        // Split by numbered items (1. 2. 3. etc) or keep as single line
+        const numbered = acText.match(/\d+\.\s*[^\n]+/g);
+        if (numbered && numbered.length > 0) {
+          list = numbered;
+        } else {
+          list = [acText];
+        }
+      }
+    } else if (type === 'issue') {
+      const stepsMatch = content.match(/Steps:\s*(.+?)$/is);
+      if (stepsMatch) {
+        const stepsText = stepsMatch[1].trim();
+        // Split by numbered items (1. 2. 3. etc) or keep as single line
+        const numbered = stepsText.match(/\d+\.\s*[^\n]+/g);
+        if (numbered && numbered.length > 0) {
+          list = numbered;
+        } else {
+          list = [stepsText];
+        }
+      }
+    }
+
+    if (title && description && list.length > 0) {
+      return { title, description, acceptance: list };
+    }
+    return null;
+  };
 
   const summary = useMemo(
     () => ({
@@ -181,7 +227,10 @@ export default function WorkflowPage() {
         id: assistantId,
         role: "assistant",
         content: "",
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
       },
     ]);
 
@@ -231,15 +280,25 @@ export default function WorkflowPage() {
           prev.map((m) =>
             m.id === assistantId
               ? {
-                  ...m,
-                  content:
-                    "Something went wrong while replying. Try again in a few seconds.",
-                }
+                ...m,
+                content:
+                  "Something went wrong while replying. Try again in a few seconds.",
+              }
               : m,
           ),
         );
       })
-      .finally(() => setIsReplying(false));
+      .finally(() => {
+        setIsReplying(false);
+        const last = messagesRef.current[messagesRef.current.length - 1];
+        if (last && last.role === 'assistant') {
+          const parsed = parseStructuredResponse(last.content, workItemType);
+          if (parsed) {
+            setWorkItem((prev) => ({ ...prev, ...parsed }));
+            setIsWorkItemReady(true);
+          }
+        }
+      });
   };
 
   const handleTypeChange = (type: WorkItemType) => {
@@ -248,6 +307,7 @@ export default function WorkflowPage() {
       ...workItemTemplates[type],
       acceptance: [...workItemTemplates[type].acceptance],
     });
+    setIsWorkItemReady(false);
   };
 
   const createJiraIssue = async () => {
@@ -278,6 +338,10 @@ export default function WorkflowPage() {
   };
 
   useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
     if (!resizing) return;
     const handle = (event: MouseEvent) => {
       if (!containerRef.current) return;
@@ -296,22 +360,11 @@ export default function WorkflowPage() {
   }, [resizing]);
 
   useEffect(() => {
-    // Skip scroll on initial mount
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      prevMessagesLengthRef.current = messages.length;
-      return;
-    }
-
-    // Only scroll if new messages were added
-    if (messages.length > prevMessagesLengthRef.current && messagesEndRef.current && chatScrollRef.current) {
-      prevMessagesLengthRef.current = messages.length;
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   return (
-    <div className="flex flex-col md:flex-1 gap-8 md:overflow-hidden">
+    <div className="flex flex-1 flex-col gap-8 overflow-hidden min-h-0">
       <SectionHeader
         tag={section.tag}
         title={section.title}
@@ -320,10 +373,11 @@ export default function WorkflowPage() {
 
       <div
         ref={containerRef}
-        className="flex flex-col md:flex-row gap-4 md:flex-1 md:overflow-hidden"
+        className="flex flex-1 gap-4 overflow-hidden"
+        style={{ minHeight: 0 }}
       >
         <section
-          className="glass-panel flex flex-col overflow-hidden rounded-[36px] border border-white/10 bg-gradient-to-br from-white/10 via-white/5 to-white/0 min-h-[500px] md:h-full"
+          className="glass-panel flex h-full flex-col overflow-hidden rounded-[36px] border border-white/10 bg-gradient-to-br from-white/10 via-white/5 to-white/0"
           style={{ flexBasis: `${chatWidthPct}%` }}
         >
           <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 px-6 py-4">
@@ -341,11 +395,10 @@ export default function WorkflowPage() {
                   key={type}
                   type="button"
                   onClick={() => handleTypeChange(type as WorkItemType)}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] transition ${
-                    workItemType === type
-                      ? "bg-white/80 text-slate-900 shadow-lg shadow-purple-500/30"
-                      : "bg-white/10 text-white/70 hover:bg-white/15 hover:text-white"
-                  }`}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] transition ${workItemType === type
+                    ? "bg-white/80 text-slate-900 shadow-lg shadow-purple-500/30"
+                    : "bg-white/10 text-white/70 hover:bg-white/15 hover:text-white"
+                    }`}
                 >
                   {template.label}
                 </button>
@@ -353,7 +406,7 @@ export default function WorkflowPage() {
             </div>
           </header>
 
-          <div ref={chatScrollRef} className="chat-scroll flex-1 min-h-0 space-y-6 overflow-y-auto px-6 py-6">
+          <div className="chat-scroll flex-1 min-h-0 space-y-6 overflow-y-auto px-6 py-6">
             {messages.map((message) => (
               <ChatBubble key={message.id} message={message} />
             ))}
@@ -392,9 +445,8 @@ export default function WorkflowPage() {
           onMouseDown={() => setResizing(true)}
         >
           <div
-            className={`h-48 w-[3px] rounded-full bg-gradient-to-b from-white/50 via-white/20 to-transparent shadow-[0_0_20px_rgba(176,137,255,0.6)] transition duration-200 ${
-              resizing ? "opacity-90" : "opacity-60 hover:opacity-90"
-            }`}
+            className={`h-48 w-[3px] rounded-full bg-gradient-to-b from-white/50 via-white/20 to-transparent shadow-[0_0_20px_rgba(176,137,255,0.6)] transition duration-200 ${resizing ? "opacity-90" : "opacity-60 hover:opacity-90"
+              }`}
           />
         </div>
 
@@ -406,7 +458,7 @@ export default function WorkflowPage() {
             {workItemTemplates[workItemType].label} outcome
           </p>
           <h3 className="mt-2 text-2xl font-semibold text-white">
-            Ready for Jira?
+            {isWorkItemReady ? "Ready for Jira!" : "Ready for Jira?"}
           </h3>
           <p className="mt-2 text-sm text-white/70">{summary.goal}</p>
 
@@ -447,20 +499,16 @@ export default function WorkflowPage() {
               <span className="text-xs uppercase tracking-[0.3em] text-white/50">
                 {workItemTemplates[workItemType].listLabel}
               </span>
-              <div className="space-y-3">
-                {workItem.acceptance.map((criterion, index) => (
-                  <textarea
-                    key={index}
-                    value={criterion}
-                    onChange={(event) => {
-                      const next = [...workItem.acceptance];
-                      next[index] = event.target.value;
-                      setWorkItem((prev) => ({ ...prev, acceptance: next }));
-                    }}
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white focus:border-white/40 focus:outline-none"
-                  />
-                ))}
-              </div>
+              <textarea
+                value={workItem.acceptance.join('\n\n')}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  const lines = value.split('\n\n').filter(l => l.trim());
+                  setWorkItem((prev) => ({ ...prev, acceptance: lines }));
+                }}
+                rows={Math.max(5, workItem.acceptance.length * 3)}
+                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white focus:border-white/40 focus:outline-none leading-relaxed"
+              />
             </div>
             <div className="flex-1" />
             <div className="flex flex-col gap-2 pt-4">
@@ -499,15 +547,15 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   const isAssistant = message.role === "assistant";
   const avatar = isAssistant
     ? {
-        src: "/chat-assistant.svg",
-        alt: "Workflow assistant",
-        name: "Assistant",
-      }
+      src: "/chat-assistant.svg",
+      alt: "Workflow assistant",
+      name: "Assistant",
+    }
     : {
-        src: "/profile.jpeg",
-        alt: "Alon Rom",
-        name: "Alon Rom",
-      };
+      src: "/profile.jpeg",
+      alt: "Alon Rom",
+      name: "Alon Rom",
+    };
 
   const baseWrapper =
     "relative h-14 w-14 overflow-hidden rounded-full shadow-[0_8px_24px_rgba(0,0,0,0.25)]";
@@ -517,9 +565,8 @@ function ChatBubble({ message }: { message: ChatMessage }) {
 
   return (
     <article
-      className={`flex items-start gap-4 ${
-        isAssistant ? "flex-row" : "flex-row-reverse"
-      }`}
+      className={`flex items-start gap-4 ${isAssistant ? "flex-row" : "flex-row-reverse"
+        }`}
     >
       <div className="flex w-20 flex-col items-center gap-1 text-[10px] uppercase tracking-[0.25em] text-white/60">
         <div className={wrapperClass}>
@@ -535,23 +582,20 @@ function ChatBubble({ message }: { message: ChatMessage }) {
         <span className="text-center leading-tight">{avatar.name}</span>
       </div>
       <div
-        className={`flex max-w-[70%] flex-col gap-2 ${
-          isAssistant ? "items-start" : "items-end"
-        }`}
+        className={`flex max-w-[70%] flex-col gap-2 ${isAssistant ? "items-start" : "items-end"
+          }`}
       >
         <div
-          className={`w-full rounded-[28px] px-5 py-4 text-sm leading-relaxed shadow-lg ${
-            isAssistant
-              ? "rounded-tl-none bg-white/10 text-white/80"
-              : "rounded-tr-none bg-gradient-to-br from-[#c084fc] to-[#7c3aed] text-white"
-          }`}
+          className={`w-full rounded-[28px] px-5 py-4 text-sm leading-relaxed shadow-lg ${isAssistant
+            ? "rounded-tl-none bg-white/10 text-white/80"
+            : "rounded-tr-none bg-gradient-to-br from-[#c084fc] to-[#7c3aed] text-white"
+            }`}
         >
           {message.content}
         </div>
         <span
-          className={`text-xs uppercase tracking-wide text-white/50 ${
-            isAssistant ? "text-left" : "text-right"
-          }`}
+          className={`text-xs uppercase tracking-wide text-white/50 ${isAssistant ? "text-left" : "text-right"
+            }`}
         >
           {message.timestamp}
         </span>
