@@ -146,6 +146,13 @@ export default function WorkflowPage() {
     | { status: "success"; key: string; url: string }
     | { status: "error"; message: string }
   >({ status: "idle" });
+  const [figmaUrl, setFigmaUrl] = useState("");
+  const [figmaState, setFigmaState] = useState<
+    | { status: "idle" }
+    | { status: "fetching" }
+    | { status: "success" }
+    | { status: "error"; message: string }
+  >({ status: "idle" });
   const [isWorkItemReady, setIsWorkItemReady] = useState(false);
   const [hldState, setHldState] = useState<
     | { status: "idle" }
@@ -343,6 +350,146 @@ export default function WorkflowPage() {
     }
   };
 
+  const importFromFigma = async () => {
+    if (!figmaUrl.trim()) {
+      setFigmaState({
+        status: "error",
+        message: "Please enter a Figma URL",
+      });
+      return;
+    }
+
+    if (figmaState.status === "fetching") return;
+    setFigmaState({ status: "fetching" });
+
+    try {
+      // Fetch Figma file data
+      const res = await fetch("/api/figma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: figmaUrl }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to fetch Figma file");
+      }
+
+      const data = await res.json();
+
+      // Extract design information from Figma file
+      const fileName = data.name || "Untitled Design";
+      const title = `Design: ${fileName}`;
+
+      // Collect all node IDs from the document for SVG export
+      const nodeIds: string[] = [];
+      if (data.document?.children) {
+        for (const child of data.document.children) {
+          if (child.id) {
+            nodeIds.push(child.id);
+          }
+        }
+      }
+
+      // Fetch SVG content for the nodes
+      let svgContent = "";
+      if (nodeIds.length > 0) {
+        try {
+          const svgRes = await fetch("/api/figma/svgs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: figmaUrl, nodeIds: nodeIds.slice(0, 5) }), // Limit to first 5 nodes
+          });
+
+          if (svgRes.ok) {
+            const svgs = await svgRes.json();
+            const svgTexts: string[] = [];
+
+            for (const [nodeId, svg] of Object.entries(svgs)) {
+              if (typeof svg === "string" && svg.trim()) {
+                svgTexts.push(`\n### SVG for Node ${nodeId}\n\n\`\`\`svg\n${svg}\n\`\`\``);
+              }
+            }
+
+            if (svgTexts.length > 0) {
+              svgContent = "\n\n## SVG Assets\n" + svgTexts.join("\n\n");
+            }
+          }
+        } catch (svgError) {
+          console.error("Failed to fetch SVGs:", svgError);
+          // Continue without SVGs
+        }
+      }
+
+      // Build narrative with design specifics and SVG content
+      const narrativeParts = [];
+      narrativeParts.push(`Figma Design: ${fileName}`);
+      narrativeParts.push(`\nSource: ${figmaUrl}`);
+
+      if (data.lastModified) {
+        narrativeParts.push(`Last Modified: ${new Date(data.lastModified).toLocaleDateString()}`);
+      }
+
+      narrativeParts.push("\n## Design Structure\n");
+
+      if (data.document) {
+        narrativeParts.push(`Document Type: ${data.document.type || "N/A"}`);
+
+        if (data.document.children && data.document.children.length > 0) {
+          narrativeParts.push(`\nPages/Frames (${data.document.children.length}):`);
+          for (const [index, child] of data.document.children.slice(0, 10).entries()) {
+            narrativeParts.push(`${index + 1}. ${child.name || "Unnamed"} (${child.type || "unknown"})`);
+          }
+        }
+      }
+
+      if (data.components && Object.keys(data.components).length > 0) {
+        const componentCount = Object.keys(data.components).length;
+        narrativeParts.push(`\n## Components (${componentCount})\n`);
+        for (const [key, comp] of Object.entries(data.components).slice(0, 10) as [string, any][]) {
+          narrativeParts.push(`- ${comp.name || key}: ${comp.description || "No description"}`);
+        }
+      }
+
+      if (data.styles && Object.keys(data.styles).length > 0) {
+        const styleCount = Object.keys(data.styles).length;
+        narrativeParts.push(`\n## Styles (${styleCount})\n`);
+        for (const [key, style] of Object.entries(data.styles).slice(0, 10) as [string, any][]) {
+          narrativeParts.push(`- ${style.name || key}: ${style.styleType || "unknown type"}`);
+        }
+      }
+
+      // Add SVG content to narrative
+      if (svgContent) {
+        narrativeParts.push(svgContent);
+      }
+
+      const description = narrativeParts.join("\n");
+
+      // Update work item with Figma data and clear acceptance criteria
+      setWorkItem((prev) => ({
+        ...prev,
+        title,
+        description,
+        acceptance: [],
+      }));
+
+      setFigmaState({ status: "success" });
+
+      // Clear the URL input and reset Figma state after 3 seconds
+      setTimeout(() => {
+        setFigmaUrl("");
+        setFigmaState({ status: "idle" });
+      }, 3000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to fetch Figma file. Please check the URL and try again.";
+      setFigmaState({
+        status: "error",
+        message,
+      });
+    }
+  };
+
   const generateHld = async (createInConfluence: boolean = true) => {
     if (hldState.status === "generating") return;
     setHldState({ status: "generating" });
@@ -362,8 +509,8 @@ export default function WorkflowPage() {
         throw new Error("Failed to generate HLD");
       }
       const data = (await res.json()) as { content: string; pageUrl?: string; pageId?: string };
-      setHldState({ 
-        status: "success", 
+      setHldState({
+        status: "success",
         content: data.content,
         pageUrl: data.pageUrl,
       });
@@ -559,6 +706,50 @@ export default function WorkflowPage() {
               </label>
             </div>
             <div className="flex flex-col gap-2 pt-4 flex-shrink-0">
+              {/* Figma Import Section */}
+              <div className="flex flex-col gap-2">
+                <label className="flex flex-col gap-2">
+                  <span className="text-xs uppercase tracking-[0.3em] text-white/50">
+                    Import from Figma
+                  </span>
+                  <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2">
+                    <input
+                      type="url"
+                      value={figmaUrl}
+                      onChange={(e) => setFigmaUrl(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && figmaUrl.trim()) {
+                          e.preventDefault();
+                          importFromFigma();
+                        }
+                      }}
+                      placeholder="Paste Figma URL and press Enter..."
+                      disabled={figmaState.status === "fetching"}
+                      className="flex-1 bg-transparent text-sm text-white placeholder:text-white/40 focus:outline-none disabled:opacity-50"
+                    />
+                    {figmaUrl.trim() && (
+                      <button
+                        type="button"
+                        onClick={importFromFigma}
+                        disabled={figmaState.status === "fetching"}
+                        className="rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50"
+                      >
+                        {figmaState.status === "fetching" ? "..." : "Import"}
+                      </button>
+                    )}
+                  </div>
+                </label>
+                {figmaState.status === "success" ? (
+                  <p className="text-xs uppercase tracking-[0.3em] text-green-200">
+                    ✓ Imported from Figma
+                  </p>
+                ) : null}
+                {figmaState.status === "error" ? (
+                  <p className="text-xs text-red-300">{figmaState.message}</p>
+                ) : null}
+              </div>
+
+              {/* Jira Section */}
               {jiraState.status === "success" ? (
                 <a
                   href={jiraState.url}
@@ -580,9 +771,9 @@ export default function WorkflowPage() {
               >
                 {jiraState.status === "creating"
                   ? "Creating..."
-                  : `Create ${workItemTemplates[workItemType].label} in Jira`}
+                  : `Create in Jira`}
               </button>
-              
+
               <div className="mt-4 border-t border-white/10 pt-4">
                 <button
                   type="button"
@@ -594,11 +785,11 @@ export default function WorkflowPage() {
                     ? "Creating HLD in Confluence..."
                     : "Create HLD in Confluence"}
                 </button>
-                
+
                 {hldState.status === "error" ? (
                   <p className="mt-2 text-xs text-red-300">{hldState.message}</p>
                 ) : null}
-                
+
                 {hldState.status === "success" && hldState.pageUrl ? (
                   <div className="mt-4">
                     <a
