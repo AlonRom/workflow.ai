@@ -138,6 +138,9 @@ export default function WorkflowPage() {
   const [resizing, setResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const isInitialMount = useRef(true);
+  const prevMessagesLengthRef = useRef(initialMessages.length);
   const [isReplying, setIsReplying] = useState(false);
   const [jiraState, setJiraState] = useState<
     | { status: "idle" }
@@ -293,11 +296,22 @@ export default function WorkflowPage() {
   }, [resizing]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Skip scroll on initial mount
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      prevMessagesLengthRef.current = messages.length;
+      return;
+    }
+
+    // Only scroll if new messages were added
+    if (messages.length > prevMessagesLengthRef.current && messagesEndRef.current && chatScrollRef.current) {
+      prevMessagesLengthRef.current = messages.length;
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
   }, [messages]);
 
   return (
-    <div className="flex flex-1 flex-col gap-8 overflow-hidden min-h-0">
+    <div className="flex flex-col md:flex-1 gap-8 md:overflow-hidden">
       <SectionHeader
         tag={section.tag}
         title={section.title}
@@ -306,11 +320,10 @@ export default function WorkflowPage() {
 
       <div
         ref={containerRef}
-        className="flex flex-1 gap-4 overflow-hidden"
-        style={{ minHeight: 0 }}
+        className="flex flex-col md:flex-row gap-4 md:flex-1 md:overflow-hidden"
       >
         <section
-          className="glass-panel flex h-full flex-col overflow-hidden rounded-[36px] border border-white/10 bg-gradient-to-br from-white/10 via-white/5 to-white/0"
+          className="glass-panel flex flex-col overflow-hidden rounded-[36px] border border-white/10 bg-gradient-to-br from-white/10 via-white/5 to-white/0 min-h-[500px] md:h-full"
           style={{ flexBasis: `${chatWidthPct}%` }}
         >
           <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 px-6 py-4">
@@ -340,7 +353,7 @@ export default function WorkflowPage() {
             </div>
           </header>
 
-          <div className="chat-scroll flex-1 min-h-0 space-y-6 overflow-y-auto px-6 py-6">
+          <div ref={chatScrollRef} className="chat-scroll flex-1 min-h-0 space-y-6 overflow-y-auto px-6 py-6">
             {messages.map((message) => (
               <ChatBubble key={message.id} message={message} />
             ))}

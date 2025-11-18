@@ -42,7 +42,7 @@ export default function WorkspaceLayout({
   }, [isResizing]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_#3a0ca3_0%,_#0b0221_45%,_#050111_80%)] text-white">
+    <div className="flex flex-col min-h-screen md:h-screen md:flex-row md:overflow-hidden bg-[radial-gradient(circle_at_top,_#3a0ca3_0%,_#0b0221_45%,_#050111_80%)] text-white">
       <aside
         className="hidden flex-col border-r border-white/10 bg-white/5 px-6 py-8 backdrop-blur-xl md:flex"
         style={{ width: sidebarWidth }}
@@ -101,7 +101,7 @@ export default function WorkspaceLayout({
         />
       </div>
 
-      <main className="flex flex-1 flex-col gap-8 px-5 py-8 md:px-10 overflow-hidden min-h-0">
+      <main className="flex flex-col md:flex-1 gap-8 px-5 py-8 md:px-10 md:overflow-hidden">
         {children}
       </main>
     </div>
