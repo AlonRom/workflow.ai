@@ -148,6 +148,13 @@ export default function WorkflowPage() {
     | { status: "success"; key: string; url: string }
     | { status: "error"; message: string }
   >({ status: "idle" });
+  const [figmaUrl, setFigmaUrl] = useState("");
+  const [figmaState, setFigmaState] = useState<
+    | { status: "idle" }
+    | { status: "fetching" }
+    | { status: "success" }
+    | { status: "error"; message: string }
+  >({ status: "idle" });
 
   const summary = useMemo(
     () => ({
@@ -231,10 +238,10 @@ export default function WorkflowPage() {
           prev.map((m) =>
             m.id === assistantId
               ? {
-                  ...m,
-                  content:
-                    "Something went wrong while replying. Try again in a few seconds.",
-                }
+                ...m,
+                content:
+                  "Something went wrong while replying. Try again in a few seconds.",
+              }
               : m,
           ),
         );
@@ -273,6 +280,146 @@ export default function WorkflowPage() {
       setJiraState({
         status: "error",
         message: "Unable to create Jira issue. Try again soon.",
+      });
+    }
+  };
+
+  const importFromFigma = async () => {
+    if (!figmaUrl.trim()) {
+      setFigmaState({
+        status: "error",
+        message: "Please enter a Figma URL",
+      });
+      return;
+    }
+
+    if (figmaState.status === "fetching") return;
+    setFigmaState({ status: "fetching" });
+
+    try {
+      // Fetch Figma file data
+      const res = await fetch("/api/figma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: figmaUrl }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to fetch Figma file");
+      }
+
+      const data = await res.json();
+
+      // Extract design information from Figma file
+      const fileName = data.name || "Untitled Design";
+      const title = `Design: ${fileName}`;
+
+      // Collect all node IDs from the document for SVG export
+      const nodeIds: string[] = [];
+      if (data.document?.children) {
+        for (const child of data.document.children) {
+          if (child.id) {
+            nodeIds.push(child.id);
+          }
+        }
+      }
+
+      // Fetch SVG content for the nodes
+      let svgContent = "";
+      if (nodeIds.length > 0) {
+        try {
+          const svgRes = await fetch("/api/figma/svgs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: figmaUrl, nodeIds: nodeIds.slice(0, 5) }), // Limit to first 5 nodes
+          });
+
+          if (svgRes.ok) {
+            const svgs = await svgRes.json();
+            const svgTexts: string[] = [];
+
+            for (const [nodeId, svg] of Object.entries(svgs)) {
+              if (typeof svg === "string" && svg.trim()) {
+                svgTexts.push(`\n### SVG for Node ${nodeId}\n\n\`\`\`svg\n${svg}\n\`\`\``);
+              }
+            }
+
+            if (svgTexts.length > 0) {
+              svgContent = "\n\n## SVG Assets\n" + svgTexts.join("\n\n");
+            }
+          }
+        } catch (svgError) {
+          console.error("Failed to fetch SVGs:", svgError);
+          // Continue without SVGs
+        }
+      }
+
+      // Build narrative with design specifics and SVG content
+      const narrativeParts = [];
+      narrativeParts.push(`Figma Design: ${fileName}`);
+      narrativeParts.push(`\nSource: ${figmaUrl}`);
+
+      if (data.lastModified) {
+        narrativeParts.push(`Last Modified: ${new Date(data.lastModified).toLocaleDateString()}`);
+      }
+
+      narrativeParts.push("\n## Design Structure\n");
+
+      if (data.document) {
+        narrativeParts.push(`Document Type: ${data.document.type || "N/A"}`);
+
+        if (data.document.children && data.document.children.length > 0) {
+          narrativeParts.push(`\nPages/Frames (${data.document.children.length}):`);
+          for (const [index, child] of data.document.children.slice(0, 10).entries()) {
+            narrativeParts.push(`${index + 1}. ${child.name || "Unnamed"} (${child.type || "unknown"})`);
+          }
+        }
+      }
+
+      if (data.components && Object.keys(data.components).length > 0) {
+        const componentCount = Object.keys(data.components).length;
+        narrativeParts.push(`\n## Components (${componentCount})\n`);
+        for (const [key, comp] of Object.entries(data.components).slice(0, 10) as [string, any][]) {
+          narrativeParts.push(`- ${comp.name || key}: ${comp.description || "No description"}`);
+        }
+      }
+
+      if (data.styles && Object.keys(data.styles).length > 0) {
+        const styleCount = Object.keys(data.styles).length;
+        narrativeParts.push(`\n## Styles (${styleCount})\n`);
+        for (const [key, style] of Object.entries(data.styles).slice(0, 10) as [string, any][]) {
+          narrativeParts.push(`- ${style.name || key}: ${style.styleType || "unknown type"}`);
+        }
+      }
+
+      // Add SVG content to narrative
+      if (svgContent) {
+        narrativeParts.push(svgContent);
+      }
+
+      const description = narrativeParts.join("\n");
+
+      // Update work item with Figma data and clear acceptance criteria
+      setWorkItem((prev) => ({
+        ...prev,
+        title,
+        description,
+        acceptance: [],
+      }));
+
+      setFigmaState({ status: "success" });
+
+      // Clear the URL input and reset Figma state after 3 seconds
+      setTimeout(() => {
+        setFigmaUrl("");
+        setFigmaState({ status: "idle" });
+      }, 3000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to fetch Figma file. Please check the URL and try again.";
+      setFigmaState({
+        status: "error",
+        message,
       });
     }
   };
@@ -341,11 +488,10 @@ export default function WorkflowPage() {
                   key={type}
                   type="button"
                   onClick={() => handleTypeChange(type as WorkItemType)}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] transition ${
-                    workItemType === type
-                      ? "bg-white/80 text-slate-900 shadow-lg shadow-purple-500/30"
-                      : "bg-white/10 text-white/70 hover:bg-white/15 hover:text-white"
-                  }`}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] transition ${workItemType === type
+                    ? "bg-white/80 text-slate-900 shadow-lg shadow-purple-500/30"
+                    : "bg-white/10 text-white/70 hover:bg-white/15 hover:text-white"
+                    }`}
                 >
                   {template.label}
                 </button>
@@ -392,9 +538,8 @@ export default function WorkflowPage() {
           onMouseDown={() => setResizing(true)}
         >
           <div
-            className={`h-48 w-[3px] rounded-full bg-gradient-to-b from-white/50 via-white/20 to-transparent shadow-[0_0_20px_rgba(176,137,255,0.6)] transition duration-200 ${
-              resizing ? "opacity-90" : "opacity-60 hover:opacity-90"
-            }`}
+            className={`h-48 w-[3px] rounded-full bg-gradient-to-b from-white/50 via-white/20 to-transparent shadow-[0_0_20px_rgba(176,137,255,0.6)] transition duration-200 ${resizing ? "opacity-90" : "opacity-60 hover:opacity-90"
+              }`}
           />
         </div>
 
@@ -463,7 +608,51 @@ export default function WorkflowPage() {
               </div>
             </div>
             <div className="flex-1" />
-            <div className="flex flex-col gap-2 pt-4">
+            <div className="flex flex-col gap-3 pt-4">
+              {/* Figma Import Section */}
+              <div className="flex flex-col gap-2">
+                <label className="flex flex-col gap-2">
+                  <span className="text-xs uppercase tracking-[0.3em] text-white/50">
+                    Import from Figma
+                  </span>
+                  <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2">
+                    <input
+                      type="url"
+                      value={figmaUrl}
+                      onChange={(e) => setFigmaUrl(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && figmaUrl.trim()) {
+                          e.preventDefault();
+                          importFromFigma();
+                        }
+                      }}
+                      placeholder="Paste Figma URL and press Enter..."
+                      disabled={figmaState.status === "fetching"}
+                      className="flex-1 bg-transparent text-sm text-white placeholder:text-white/40 focus:outline-none disabled:opacity-50"
+                    />
+                    {figmaUrl.trim() && (
+                      <button
+                        type="button"
+                        onClick={importFromFigma}
+                        disabled={figmaState.status === "fetching"}
+                        className="rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50"
+                      >
+                        {figmaState.status === "fetching" ? "..." : "Import"}
+                      </button>
+                    )}
+                  </div>
+                </label>
+                {figmaState.status === "success" ? (
+                  <p className="text-xs uppercase tracking-[0.3em] text-green-200">
+                    ✓ Imported from Figma
+                  </p>
+                ) : null}
+                {figmaState.status === "error" ? (
+                  <p className="text-xs text-red-300">{figmaState.message}</p>
+                ) : null}
+              </div>
+
+              {/* Jira Section */}
               {jiraState.status === "success" ? (
                 <a
                   href={jiraState.url}
@@ -485,7 +674,7 @@ export default function WorkflowPage() {
               >
                 {jiraState.status === "creating"
                   ? "Creating..."
-                  : `Create ${workItemTemplates[workItemType].label} in Jira`}
+                  : `Create in Jira`}
               </button>
             </div>
           </form>
@@ -499,15 +688,15 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   const isAssistant = message.role === "assistant";
   const avatar = isAssistant
     ? {
-        src: "/chat-assistant.svg",
-        alt: "Workflow assistant",
-        name: "Assistant",
-      }
+      src: "/chat-assistant.svg",
+      alt: "Workflow assistant",
+      name: "Assistant",
+    }
     : {
-        src: "/profile.jpeg",
-        alt: "Alon Rom",
-        name: "Alon Rom",
-      };
+      src: "/profile.jpeg",
+      alt: "Alon Rom",
+      name: "Alon Rom",
+    };
 
   const baseWrapper =
     "relative h-14 w-14 overflow-hidden rounded-full shadow-[0_8px_24px_rgba(0,0,0,0.25)]";
@@ -517,9 +706,8 @@ function ChatBubble({ message }: { message: ChatMessage }) {
 
   return (
     <article
-      className={`flex items-start gap-4 ${
-        isAssistant ? "flex-row" : "flex-row-reverse"
-      }`}
+      className={`flex items-start gap-4 ${isAssistant ? "flex-row" : "flex-row-reverse"
+        }`}
     >
       <div className="flex w-20 flex-col items-center gap-1 text-[10px] uppercase tracking-[0.25em] text-white/60">
         <div className={wrapperClass}>
@@ -535,23 +723,20 @@ function ChatBubble({ message }: { message: ChatMessage }) {
         <span className="text-center leading-tight">{avatar.name}</span>
       </div>
       <div
-        className={`flex max-w-[70%] flex-col gap-2 ${
-          isAssistant ? "items-start" : "items-end"
-        }`}
+        className={`flex max-w-[70%] flex-col gap-2 ${isAssistant ? "items-start" : "items-end"
+          }`}
       >
         <div
-          className={`w-full rounded-[28px] px-5 py-4 text-sm leading-relaxed shadow-lg ${
-            isAssistant
-              ? "rounded-tl-none bg-white/10 text-white/80"
-              : "rounded-tr-none bg-gradient-to-br from-[#c084fc] to-[#7c3aed] text-white"
-          }`}
+          className={`w-full rounded-[28px] px-5 py-4 text-sm leading-relaxed shadow-lg ${isAssistant
+            ? "rounded-tl-none bg-white/10 text-white/80"
+            : "rounded-tr-none bg-gradient-to-br from-[#c084fc] to-[#7c3aed] text-white"
+            }`}
         >
           {message.content}
         </div>
         <span
-          className={`text-xs uppercase tracking-wide text-white/50 ${
-            isAssistant ? "text-left" : "text-right"
-          }`}
+          className={`text-xs uppercase tracking-wide text-white/50 ${isAssistant ? "text-left" : "text-right"
+            }`}
         >
           {message.timestamp}
         </span>
