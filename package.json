@@ -7,10 +7,12 @@
   ],
   "scripts": {
     "dev:server": "npm run --workspace apps/server dev",
+    "dev:server:debug": "npm run --workspace apps/server dev:debug",
     "dev:dashboard": "npm run --workspace apps/dashboard dev",
     "dev:dashboard:open": "npm run --workspace apps/dashboard dev:open",
     "dev:stack": "concurrently \"npm run dev:server\" \"npm run dev:dashboard\"",
-    "dev:stack:open": "concurrently \"npm run dev:server\" \"npm run dev:dashboard:open\""
+    "dev:stack:open": "concurrently \"npm run dev:server\" \"npm run dev:dashboard:open\"",
+    "dev:stack:debug": "concurrently \"npm run dev:server:debug\" \"npm run dev:dashboard\""
   },
   "devDependencies": {
     "concurrently": "^9.0.1"
