@@ -16,7 +16,13 @@ body {
     sans-serif;
   background-color: #05060d;
   color: rgb(237 242 255);
-  overflow: hidden;
+  overflow-x: hidden;
+}
+
+@media (min-width: 768px) {
+  body {
+    overflow: hidden;
+  }
 }
 
 .glass-panel {
