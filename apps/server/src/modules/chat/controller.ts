@@ -45,8 +45,21 @@ export async function registerChatRoutes(app: FastifyInstance) {
     const { workItemType, messages } = parsed.data;
 
     // Try real OpenAI streaming first
-    const systemPrompt =
-      "You are an AI product assistant helping refine a work item for Jira (Epic/Feature/User Story/Bug/Issue). Ask clarifying questions, write acceptance criteria, and keep replies concise.";
+    const systemPrompt = `
+  You are an AI product assistant helping refine a work item for Jira (Epic/Feature/User Story/Bug/Issue). Ask clarifying questions, write acceptance criteria, and keep replies concise.
+
+  If the user is discussing or refining requirements, continue the conversation and ask clarifying questions.
+
+  If the requirements are clear and ready, respond ONLY with the following format (each field on a new line, no extra text):
+
+  Title: ${workItemType === 'story' ? '<user story title>' : '<task title>'}
+  Description: ${workItemType === 'story' ? '<user story description>' : '<task description>'}
+  ${workItemType === 'story' ? 'Acceptance Criteria:\n1. <first criteria>\n2. <second criteria>\n3. <third criteria>' : 'Steps:\n1. <first step>\n2. <second step>\n3. <third step>'}
+
+  Do not include extra text, introductions, or explanations. Only output the template.
+  Each ${workItemType === 'story' ? 'acceptance criteria' : 'step'} must be on a new line and numbered (1., 2., 3., etc.).
+  If you are not ready to create a template, continue the discussion.
+  `;
     const openAiRes =
       (await streamOpenAIChat({
         messages: [
