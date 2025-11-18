@@ -495,18 +495,20 @@ export default function WorkflowPage() {
         </div>
 
         <aside
-          className="glass-panel flex flex-col rounded-[32px] border border-white/10 bg-white/5 p-6"
+          className="glass-panel flex flex-col rounded-[32px] border border-white/10 bg-white/5 p-6 overflow-hidden min-h-0"
           style={{ flexBasis: `${100 - chatWidthPct}%` }}
         >
-          <p className="text-xs uppercase tracking-[0.4em] text-white/60">
-            {workItemTemplates[workItemType].label} outcome
-          </p>
-          <h3 className="mt-2 text-2xl font-semibold text-white">
-            {isWorkItemReady ? "Ready for Jira!" : "Ready for Jira?"}
-          </h3>
-          <p className="mt-2 text-sm text-white/70">{summary.goal}</p>
+          <div className="flex-shrink-0">
+            <p className="text-xs uppercase tracking-[0.4em] text-white/60">
+              {workItemTemplates[workItemType].label} outcome
+            </p>
+            <h3 className="mt-2 text-2xl font-semibold text-white">
+              {isWorkItemReady ? "Ready for Jira!" : "Ready for Jira?"}
+            </h3>
+            <p className="mt-2 text-sm text-white/70">{summary.goal}</p>
+          </div>
 
-          <form className="mt-6 flex flex-1 flex-col space-y-5 overflow-y-auto min-h-0">
+          <form className="mt-6 flex flex-1 flex-col min-h-0 overflow-y-auto">
             <div className="flex flex-col space-y-5 flex-shrink-0">
               <label className="flex flex-col gap-2 text-sm text-white/70">
                 <span className="text-xs uppercase tracking-[0.3em] text-white/50">
@@ -540,27 +542,23 @@ export default function WorkflowPage() {
                 />
               </label>
 
-              <div className="flex flex-col gap-2">
+              <label className="flex flex-col gap-2 text-sm text-white/70">
                 <span className="text-xs uppercase tracking-[0.3em] text-white/50">
                   {workItemTemplates[workItemType].listLabel}
                 </span>
-                <div className="space-y-3">
-                  {workItem.acceptance.map((criterion, index) => (
-                    <textarea
-                      key={index}
-                      value={criterion}
-                      onChange={(event) => {
-                        const next = [...workItem.acceptance];
-                        next[index] = event.target.value;
-                        setWorkItem((prev) => ({ ...prev, acceptance: next }));
-                      }}
-                      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white focus:border-white/40 focus:outline-none"
-                    />
-                  ))}
-                </div>
-              </div>
+                <textarea
+                  value={workItem.acceptance.join('\n\n')}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    const lines = value.split('\n\n').filter(l => l.trim());
+                    setWorkItem((prev) => ({ ...prev, acceptance: lines }));
+                  }}
+                  rows={Math.max(5, workItem.acceptance.length * 3)}
+                  className="min-h-[120px] rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white focus:border-white/40 focus:outline-none leading-relaxed"
+                />
+              </label>
             </div>
-            <div className="flex flex-col gap-2 pt-4 flex-shrink-0 mt-auto">
+            <div className="flex flex-col gap-2 pt-4 flex-shrink-0">
               {jiraState.status === "success" ? (
                 <a
                   href={jiraState.url}
