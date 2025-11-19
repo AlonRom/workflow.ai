@@ -133,6 +133,12 @@ export default function WorkflowPage() {
     | { status: "success"; content: string; pageUrl?: string }
     | { status: "error"; message: string }
   >({ status: "idle" });
+  const [copilotState, setCopilotState] = useState<
+    | { status: "idle" }
+    | { status: "generating" }
+    | { status: "success"; prUrl?: string }
+    | { status: "error"; message: string }
+  >({ status: "idle" });
 
   const parseStructuredResponse = (content: string, type: WorkItemType) => {
     // Extract fields using regex to handle both multi-line and single-line formats
@@ -378,6 +384,37 @@ export default function WorkflowPage() {
     }
   };
 
+  const triggerCopilot = async () => {
+    if (copilotState.status === "generating") return;
+    setCopilotState({ status: "generating" });
+    try {
+      // Build the same description format as Jira
+      const taskTitle = workItem.title;
+      const taskDescription = workItem.description;
+      const acceptanceCriteria = workItem.acceptance.join("\n");
+
+      const fullDescription = `${taskTitle}\n\n${taskDescription}\n\n**Acceptance Criteria:**\n${acceptanceCriteria}\n\nPlease implement this feature following existing code patterns.`;
+
+      const res = await fetch("/api/copilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: fullDescription,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error("Failed to trigger Copilot");
+      }
+      const data = (await res.json()) as { prUrl?: string };
+      setCopilotState({ status: "success", prUrl: data.prUrl });
+    } catch (error) {
+      setCopilotState({
+        status: "error",
+        message: "Unable to trigger Copilot. Try again soon.",
+      });
+    }
+  };
+
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
@@ -571,6 +608,19 @@ export default function WorkflowPage() {
               {hldState.status === "error" ? (
                 <p className="text-xs text-red-300">{hldState.message}</p>
               ) : null}
+              {copilotState.status === "success" && copilotState.prUrl ? (
+                <a
+                  href={copilotState.prUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs uppercase tracking-[0.3em] text-green-200"
+                >
+                  Copilot PR created →
+                </a>
+              ) : null}
+              {copilotState.status === "error" ? (
+                <p className="text-xs text-red-300">{copilotState.message}</p>
+              ) : null}
               {hldState.status === "success" && hldState.pageUrl ? (
                 <div>
                   <a
@@ -673,7 +723,8 @@ export default function WorkflowPage() {
                 <p className="text-xs uppercase tracking-[0.3em] text-white/50 flex-1">Generate code with Copilot</p>
                 <button
                   type="button"
-                  disabled
+                  onClick={triggerCopilot}
+                  disabled={copilotState.status === "generating"}
                   className="inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50 flex-shrink-0"
                 >
                   <Image
@@ -683,7 +734,7 @@ export default function WorkflowPage() {
                     height={12}
                     className="rounded-sm object-contain"
                   />
-                  Copilot
+                  {copilotState.status === "generating" ? "..." : "Copilot"}
                 </button>
               </div>
             </div>

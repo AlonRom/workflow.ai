@@ -17,6 +17,9 @@ const envSchema = z.object({
   CONFLUENCE_SPACE_KEY: z.string().min(1).optional(),
   CONFLUENCE_EMAIL: z.string().email().optional(),
   CONFLUENCE_API_TOKEN: z.string().min(1).optional(),
+  GITHUB_APP_ID: z.string().min(1),
+  GITHUB_APP_PRIVATE_KEY: z.string().min(1),
+  GITHUB_APP_INSTALLATION_ID: z.string().min(1),
 });
 
 export type Env = z.infer<typeof envSchema>;
