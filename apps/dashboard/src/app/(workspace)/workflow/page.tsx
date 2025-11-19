@@ -35,7 +35,7 @@ const workItemTemplates: Record<string, WorkItemTemplate> = {
   story: {
     label: "User Story",
     titleLabel: "Story Title",
-    descriptionLabel: "Narrative",
+    descriptionLabel: "Description",
     listLabel: "Acceptance Criteria:",
     title: "Workflow AI refinement lane",
     description:
@@ -63,7 +63,7 @@ const workItemTemplates: Record<string, WorkItemTemplate> = {
   epic: {
     label: "Epic",
     titleLabel: "Epic Title",
-    descriptionLabel: "Epic Narrative",
+    descriptionLabel: "Epic Description",
     listLabel: "Milestone Checks:",
     title: "Workflow AI program rollout",
     description:
