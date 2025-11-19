@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles } from "lucide-react";
+import { diffWords, type Change } from "diff";
 
 type ChatMessage = {
   id: string;
@@ -30,6 +31,10 @@ type WorkItemTemplate = {
   description: string;
   acceptance: string[];
 };
+
+type WorkItemField = "title" | "description" | "acceptance";
+const diffableFields: WorkItemField[] = ["title", "description", "acceptance"];
+const hasValue = (text: string) => text.trim().length > 0;
 
 const workItemTemplates: Record<string, WorkItemTemplate> = {
   story: {
@@ -133,6 +138,46 @@ export default function WorkflowPage() {
     | { status: "success"; content: string; pageUrl?: string }
     | { status: "error"; message: string }
   >({ status: "idle" });
+  const [latestDiffs, setLatestDiffs] = useState<Partial<Record<WorkItemField, Change[]>>>({});
+
+  const setWorkItemWithDiff = (
+    updater: (prev: WorkItemTemplate) => WorkItemTemplate,
+    options?: { trackDiff?: boolean; resetDiffs?: boolean },
+  ) => {
+    if (options?.resetDiffs) {
+      setLatestDiffs({});
+    }
+    setWorkItem((prev) => {
+      const next = updater(prev);
+      if (options?.trackDiff !== false && !options?.resetDiffs) {
+        const prevStrings: Record<WorkItemField, string> = {
+          title: prev.title,
+          description: prev.description,
+          acceptance: prev.acceptance.join("\n\n"),
+        };
+        const nextStrings: Record<WorkItemField, string> = {
+          title: next.title,
+          description: next.description,
+          acceptance: next.acceptance.join("\n\n"),
+        };
+        setLatestDiffs((current) => {
+          const updated = { ...current };
+          let mutated = false;
+          diffableFields.forEach((field) => {
+            if (prevStrings[field] !== nextStrings[field]) {
+              updated[field] = diffWords(prevStrings[field], nextStrings[field]);
+              mutated = true;
+            } else if (updated[field]) {
+              delete updated[field];
+              mutated = true;
+            }
+          });
+          return mutated ? updated : current;
+        });
+      }
+      return next;
+    });
+  };
 
   const parseStructuredResponse = (content: string, type: WorkItemType) => {
     // Extract fields using regex to handle both multi-line and single-line formats
@@ -296,7 +341,7 @@ export default function WorkflowPage() {
         // Parse template from the full response (if it exists) - use full assistantContent
         const parsed = parseStructuredResponse(assistantContent, workItemType);
         if (parsed) {
-          setWorkItem((prev) => ({ ...prev, ...parsed }));
+          setWorkItemWithDiff((prev) => ({ ...prev, ...parsed }));
           // Mark ready only if all three fields are present (full template)
           const isFullTemplate = /Title:\s*.+\nDescription:\s*.+((Acceptance Criteria:)|(Steps:))\s*\d+\.\s*/is.test(assistantContent);
           if (isFullTemplate) {
@@ -304,12 +349,16 @@ export default function WorkflowPage() {
           }
         }
       });
-  }; const handleTypeChange = (type: WorkItemType) => {
+  };
+  const handleTypeChange = (type: WorkItemType) => {
     setWorkItemType(type);
-    setWorkItem({
-      ...workItemTemplates[type],
-      acceptance: [...workItemTemplates[type].acceptance],
-    });
+    setWorkItemWithDiff(
+      () => ({
+        ...workItemTemplates[type],
+        acceptance: [...workItemTemplates[type].acceptance],
+      }),
+      { trackDiff: false, resetDiffs: true },
+    );
     setIsWorkItemReady(false);
   };
 
@@ -510,48 +559,72 @@ export default function WorkflowPage() {
                 <span className="text-xs uppercase tracking-[0.3em] text-white/50">
                   {workItemTemplates[workItemType].titleLabel}
                 </span>
-                <input
-                  value={workItem.title}
-                  onChange={(event) =>
-                    setWorkItem((prev) => ({
-                      ...prev,
-                      title: event.target.value,
-                    }))
-                  }
-                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-white focus:border-white/40 focus:outline-none"
-                />
+                <div className="relative rounded-2xl border border-white/10 bg-white/5 text-base text-white focus-within:border-white/40 transition min-h-[64px]">
+                  {hasValue(workItem.title) ? (
+                    <div className="pointer-events-none absolute inset-0 px-4 py-3">
+                      <DiffOverlay value={workItem.title} changes={latestDiffs.title} />
+                    </div>
+                  ) : null}
+                  <input
+                    value={workItem.title}
+                    onChange={(event) =>
+                      setWorkItemWithDiff((prev) => ({
+                        ...prev,
+                        title: event.target.value,
+                      }))
+                    }
+                    className={`relative w-full bg-transparent px-4 py-3 text-base caret-white placeholder:text-white/40 focus:outline-none ${hasValue(workItem.title) ? "text-transparent selection:bg-white/0" : "text-white"}`}
+                  />
+                </div>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-white/70">
                 <span className="text-xs uppercase tracking-[0.3em] text-white/50">
                   {workItemTemplates[workItemType].descriptionLabel}
                 </span>
-                <textarea
-                  value={workItem.description}
-                  onChange={(event) =>
-                    setWorkItem((prev) => ({
-                      ...prev,
-                      description: event.target.value,
-                    }))
-                  }
-                  className="min-h-[120px] rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-white focus:border-white/40 focus:outline-none"
-                />
+                <div className="relative rounded-2xl border border-white/10 bg-white/5 text-base text-white focus-within:border-white/40 transition min-h-[160px]">
+                  {hasValue(workItem.description) ? (
+                    <div className="pointer-events-none absolute inset-0 px-4 py-3">
+                      <DiffOverlay value={workItem.description} changes={latestDiffs.description} />
+                    </div>
+                  ) : null}
+                  <textarea
+                    value={workItem.description}
+                    onChange={(event) =>
+                      setWorkItemWithDiff((prev) => ({
+                        ...prev,
+                        description: event.target.value,
+                      }))
+                    }
+                    className={`relative min-h-[160px] w-full resize-none bg-transparent px-4 py-3 text-base caret-white placeholder:text-white/40 focus:outline-none leading-relaxed ${hasValue(workItem.description) ? "text-transparent selection:bg-white/0" : "text-white"}`}
+                  />
+                </div>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-white/70">
                 <span className="text-xs uppercase tracking-[0.3em] text-white/50">
                   {workItemTemplates[workItemType].listLabel}
                 </span>
-                <textarea
-                  value={workItem.acceptance.join('\n\n')}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    const lines = value.split('\n\n').filter(l => l.trim());
-                    setWorkItem((prev) => ({ ...prev, acceptance: lines }));
-                  }}
-                  rows={Math.max(5, workItem.acceptance.length * 3)}
-                  className="min-h-[120px] rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white focus:border-white/40 focus:outline-none leading-relaxed"
-                />
+                <div className="relative rounded-2xl border border-white/10 bg-white/5 text-sm text-white focus-within:border-white/40 transition min-h-[160px]">
+                  {hasValue(workItem.acceptance.join('\n\n')) ? (
+                    <div className="pointer-events-none absolute inset-0 px-4 py-3">
+                      <DiffOverlay
+                        value={workItem.acceptance.join('\n\n')}
+                        changes={latestDiffs.acceptance}
+                      />
+                    </div>
+                  ) : null}
+                  <textarea
+                    value={workItem.acceptance.join('\n\n')}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      const lines = value.split('\n\n').filter((l) => l.trim());
+                      setWorkItemWithDiff((prev) => ({ ...prev, acceptance: lines }));
+                    }}
+                    rows={Math.max(5, workItem.acceptance.length * 3)}
+                    className={`relative min-h-[160px] w-full resize-none bg-transparent px-4 py-3 text-sm caret-white placeholder:text-white/40 focus:outline-none leading-relaxed ${hasValue(workItem.acceptance.join('\n\n')) ? "text-transparent selection:bg-white/0" : "text-white"}`}
+                  />
+                </div>
               </label>
             </div>
             <div className="flex flex-col gap-2 pt-4 flex-shrink-0">
@@ -693,6 +766,32 @@ export default function WorkflowPage() {
     </div>
   );
 }
+
+function DiffOverlay({ value, changes }: { value: string; changes?: Change[] }) {
+  if (!hasValue(value)) return null;
+  const hasDiff = changes?.some((part) => part.added || part.removed);
+  const viewSegments = hasDiff
+    ? (changes || []).filter((part) => !part.removed)
+    : [{ value, added: false } as Change];
+  if (viewSegments.length === 0) return null;
+
+  return (
+    <div className="text-base text-white whitespace-pre-wrap leading-relaxed">
+      {viewSegments.map((part, index) => (
+        <span
+          key={`${part.value}-${index}`}
+          className={part.added
+            ? "rounded-full bg-gradient-to-r from-[#a855f7]/40 to-[#6366f1]/30 px-1 text-white"
+            : "text-white"}
+        >
+          {part.value}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+const DiffPreview = DiffOverlay;
 
 function ChatBubble({ message }: { message: ChatMessage }) {
   const isAssistant = message.role === "assistant";
