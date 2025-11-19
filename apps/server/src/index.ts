@@ -7,7 +7,7 @@ import { registerChatRoutes } from "./modules/chat/controller.js";
 import { registerJiraRoutes } from "./modules/jira/controller.js";
 import { registerFigmaRoutes } from "./modules/figma/controller.js";
 import { registerHldRoutes } from "./modules/hld/controller.js";
-import { registerGithubRoutes } from "./modules/github/controller";
+// import { registerGithubRoutes } from "./modules/github/controller";
 import { registerCopilotRoutes } from "./modules/copilot/controller";
 import { registerCopilotCLIRoutes } from "./modules/copilot-cli/controller";
 
@@ -22,7 +22,7 @@ async function buildServer() {
   await app.register(cors, { origin: true });
   await registerChatRoutes(app);
   await registerJiraRoutes(app);
-  await registerGithubRoutes(app);
+  // await registerGithubRoutes(app);
   await registerCopilotRoutes(app);
   await registerCopilotCLIRoutes(app);
   await registerFigmaRoutes(app);
