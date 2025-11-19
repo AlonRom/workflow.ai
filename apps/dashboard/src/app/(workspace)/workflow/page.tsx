@@ -250,12 +250,13 @@ export default function WorkflowPage() {
         }
 
         // Separate chat response from template
-        // Template starts with "Title:" or "Description:" or "Acceptance Criteria:" or "Steps:"
-        const templateMatch = assistantContent.match(/\n(Title:|Description:|Acceptance Criteria:|Steps:)/);
+        // Look for where the template starts - it can be preceded by dashes, newlines, or just start directly
+        // Patterns: "--- **Title:**" or "\nTitle:" or "\nDescription:" etc
+        const templateMatch = assistantContent.match(/(-{2,}\s*\*{0,2}|[\n]\s*)(Title:|Description:|Acceptance Criteria:|Steps:)/);
         let chatResponse = assistantContent;
 
         if (templateMatch && templateMatch.index !== undefined) {
-          // Found a template, extract just the chat part
+          // Found a template, extract just the chat part (before the template starts)
           chatResponse = assistantContent.substring(0, templateMatch.index).trim();
         }
 
