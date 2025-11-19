@@ -175,8 +175,14 @@ export default function WorkflowPage() {
       }
     }
 
-    if (title && description && list.length > 0) {
-      return { title, description, acceptance: list };
+    // Return partial updates (at least one field) or full updates
+    const updates: any = {};
+    if (title) updates.title = title;
+    if (description) updates.description = description;
+    if (list.length > 0) updates.acceptance = list;
+
+    if (Object.keys(updates).length > 0) {
+      return updates;
     }
     return null;
   };
@@ -205,20 +211,8 @@ export default function WorkflowPage() {
     setDraft("");
     setIsReplying(true);
 
-    // Create a placeholder assistant message to append deltas
-    const assistantId = crypto.randomUUID();
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: assistantId,
-        role: "assistant",
-        content: "",
-        timestamp: new Date().toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      },
-    ]);
+    // Buffer assistant reply and only add to chat if not a full structured template
+    let assistantContent = "";
 
     fetch("/api/chat/stream", {
       method: "POST",
@@ -247,40 +241,58 @@ export default function WorkflowPage() {
                 | { type: "delta"; delta: string }
                 | { type: "done" };
               if (evt.type === "delta") {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? { ...m, content: (m.content || "") + evt.delta }
-                      : m,
-                  ),
-                );
+                assistantContent += evt.delta;
               }
             } catch {
               // ignore bad chunks
             }
           }
         }
+        // After streaming, decide if reply is a structured template
+        const isFullTemplate = /Title:\s*.+\nDescription:\s*.+((Acceptance Criteria:)|(Steps:))\s*\d+\.\s*/is.test(assistantContent);
+
+        if (!isFullTemplate) {
+          // Add to chat if not a full template (show partial updates and regular chat)
+          const assistantId = crypto.randomUUID();
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: assistantId,
+              role: "assistant",
+              content: assistantContent,
+              timestamp: new Date().toLocaleTimeString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+            },
+          ]);
+        }
       })
       .catch(() => {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? {
-                ...m,
-                content:
-                  "Something went wrong while replying. Try again in a few seconds.",
-              }
-              : m,
-          ),
-        );
+        // Show error in chat
+        const assistantId = crypto.randomUUID();
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: assistantId,
+            role: "assistant",
+            content: "Something went wrong while replying. Try again in a few seconds.",
+            timestamp: new Date().toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          },
+        ]);
       })
       .finally(() => {
         setIsReplying(false);
-        const last = messagesRef.current[messagesRef.current.length - 1];
-        if (last && last.role === 'assistant') {
-          const parsed = parseStructuredResponse(last.content, workItemType);
-          if (parsed) {
-            setWorkItem((prev) => ({ ...prev, ...parsed }));
+        // Always parse the full assistantContent for sidebar updates
+        const parsed = parseStructuredResponse(assistantContent, workItemType);
+        if (parsed) {
+          setWorkItem((prev) => ({ ...prev, ...parsed }));
+          // Mark ready only if all three fields are present (full template)
+          const isFullTemplate = /Title:\s*.+\nDescription:\s*.+((Acceptance Criteria:)|(Steps:))\s*\d+\.\s*/is.test(assistantContent);
+          if (isFullTemplate) {
             setIsWorkItemReady(true);
           }
         }
@@ -342,8 +354,8 @@ export default function WorkflowPage() {
         throw new Error("Failed to generate HLD");
       }
       const data = (await res.json()) as { content: string; pageUrl?: string; pageId?: string };
-      setHldState({ 
-        status: "success", 
+      setHldState({
+        status: "success",
         content: data.content,
         pageUrl: data.pageUrl,
       });
@@ -409,7 +421,7 @@ export default function WorkflowPage() {
                 Workflow channel
               </p>
               <h3 className="text-lg font-semibold text-white">
-              Co-write and execute the Jira work item with AI. Capture context, constraints, and acceptance criteria before handing off.
+                Co-write and execute the Jira work item with AI. Capture context, constraints, and acceptance criteria before handing off.
               </h3>
             </div>
             <div className="flex flex-wrap gap-2">
