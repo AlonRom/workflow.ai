@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles } from "lucide-react";
+import { diffWords, type Change } from "diff";
 
 type ChatMessage = {
   id: string;
@@ -30,6 +31,10 @@ type WorkItemTemplate = {
   description: string;
   acceptance: string[];
 };
+
+type WorkItemField = "title" | "description" | "acceptance";
+const diffableFields: WorkItemField[] = ["title", "description", "acceptance"];
+const hasValue = (text: string) => text.trim().length > 0;
 
 const workItemTemplates: Record<string, WorkItemTemplate> = {
   story: {
@@ -146,6 +151,46 @@ export default function WorkflowPage() {
     | { status: "success"; fileName: string; svgUrls: string[] }
     | { status: "error"; message: string }
   >({ status: "idle" });
+  const [latestDiffs, setLatestDiffs] = useState<Partial<Record<WorkItemField, Change[]>>>({});
+
+  const setWorkItemWithDiff = (
+    updater: (prev: WorkItemTemplate) => WorkItemTemplate,
+    options?: { trackDiff?: boolean; resetDiffs?: boolean },
+  ) => {
+    if (options?.resetDiffs) {
+      setLatestDiffs({});
+    }
+    setWorkItem((prev) => {
+      const next = updater(prev);
+      if (options?.trackDiff !== false && !options?.resetDiffs) {
+        const prevStrings: Record<WorkItemField, string> = {
+          title: prev.title,
+          description: prev.description,
+          acceptance: prev.acceptance.join("\n\n"),
+        };
+        const nextStrings: Record<WorkItemField, string> = {
+          title: next.title,
+          description: next.description,
+          acceptance: next.acceptance.join("\n\n"),
+        };
+        setLatestDiffs((current) => {
+          const updated = { ...current };
+          let mutated = false;
+          diffableFields.forEach((field) => {
+            if (prevStrings[field] !== nextStrings[field]) {
+              updated[field] = diffWords(prevStrings[field], nextStrings[field]);
+              mutated = true;
+            } else if (updated[field]) {
+              delete updated[field];
+              mutated = true;
+            }
+          });
+          return mutated ? updated : current;
+        });
+      }
+      return next;
+    });
+  };
 
   const parseStructuredResponse = (content: string, type: WorkItemType) => {
     // Extract fields using regex to handle both multi-line and single-line formats
@@ -309,7 +354,7 @@ export default function WorkflowPage() {
         // Parse template from the full response (if it exists) - use full assistantContent
         const parsed = parseStructuredResponse(assistantContent, workItemType);
         if (parsed) {
-          setWorkItem((prev) => ({ ...prev, ...parsed }));
+          setWorkItemWithDiff((prev) => ({ ...prev, ...parsed }));
           // Mark ready only if all three fields are present (full template)
           const isFullTemplate = /Title:\s*.+\nDescription:\s*.+((Acceptance Criteria:)|(Steps:))\s*\d+\.\s*/is.test(assistantContent);
           if (isFullTemplate) {
@@ -317,12 +362,16 @@ export default function WorkflowPage() {
           }
         }
       });
-  }; const handleTypeChange = (type: WorkItemType) => {
+  };
+  const handleTypeChange = (type: WorkItemType) => {
     setWorkItemType(type);
-    setWorkItem({
-      ...workItemTemplates[type],
-      acceptance: [...workItemTemplates[type].acceptance],
-    });
+    setWorkItemWithDiff(
+      () => ({
+        ...workItemTemplates[type],
+        acceptance: [...workItemTemplates[type].acceptance],
+      }),
+      { trackDiff: false, resetDiffs: true },
+    );
     setIsWorkItemReady(false);
   };
 
@@ -393,62 +442,25 @@ export default function WorkflowPage() {
 
   const fetchFigmaDesign = async () => {
     if (!figmaUrl.trim() || figmaState.status === "fetching") return;
-    setFigmaState({ status: "fetching" });
-    try {
-      // First, fetch file metadata to get the name
-      const fileRes = await fetch("/api/figma", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: figmaUrl }),
-      });
-
-      if (!fileRes.ok) {
-        throw new Error("Failed to fetch Figma file");
-      }
-
-      const fileData = (await fileRes.json()) as { name: string; document: any };
-      const fileName = fileData.name;
-
-      // Extract all node IDs from the document
-      const nodeIds: string[] = [];
-      const extractNodeIds = (node: any) => {
-        if (node.id) nodeIds.push(node.id);
-        if (node.children) {
-          node.children.forEach(extractNodeIds);
-        }
-      };
-      extractNodeIds(fileData.document);
-
-      // Fetch SVGs for all nodes (limit to first 10 to avoid timeout)
-      const limitedNodeIds = nodeIds.slice(0, 10);
-      const svgRes = await fetch("/api/figma/svgs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: figmaUrl, nodeIds: limitedNodeIds }),
-      });
-
-      if (!svgRes.ok) {
-        throw new Error("Failed to fetch Figma SVGs");
-      }
-
-      const svgData = (await svgRes.json()) as Record<string, string>;
-      const svgUrls = Object.values(svgData).filter(url => url);
-
-      setFigmaState({ status: "success", fileName, svgUrls });
-
-      // Update work item title and add SVG URLs to acceptance criteria
-      const svgUrlsText = svgUrls.map((url, idx) => `${idx + 1}. ${url}`).join("\n");
-      setWorkItem((prev) => ({
-        ...prev,
-        title: `Design to code ${fileName}`,
-        acceptance: [...prev.acceptance, `\n**Design SVG URLs:**\n${svgUrlsText}`],
-      }));
-    } catch (error) {
+    
+    // Just validate URL format and set state
+    const figmaUrlPattern = /figma\.com\/(file|design)\/[a-zA-Z0-9]+/;
+    if (!figmaUrlPattern.test(figmaUrl)) {
       setFigmaState({
         status: "error",
-        message: "Unable to fetch Figma design. Check the URL and try again.",
+        message: "Invalid Figma URL format. Expected: https://figma.com/file/... or https://figma.com/design/...",
       });
+      return;
     }
+
+    setFigmaState({ status: "success", fileName: "Figma Design", svgUrls: [] });
+
+    // Update work item with Figma URL added to both description and acceptance criteria
+    setWorkItem((prev) => ({
+      ...prev,
+      description: prev.description,
+      acceptance: [...prev.acceptance, `\n**Figma Design:** ${figmaUrl}`],
+    }));
   };
 
   const triggerCopilot = async () => {
@@ -460,12 +472,11 @@ export default function WorkflowPage() {
       const taskDescription = workItem.description;
       const acceptanceCriteria = workItem.acceptance.join("\n");
 
-      let fullDescription = `${taskTitle}\n\n${taskDescription}\n\n**Acceptance Criteria:**\n${acceptanceCriteria}\n\nPlease implement this feature following existing code patterns.`;
+      let fullDescription = `${taskTitle}\n\n${taskDescription}\n\n**Acceptance Criteria:**\n${acceptanceCriteria}\n\n**DEMO INSTRUCTIONS (URGENT):**\n1. Don't write tests - skip all testing\n2. Do the task short and quickly - minimal viable implementation\n3. Don't validate yourself - no extra checks or validations\n4. This is for a live demo with very limited time\n\nPlease implement this feature following existing code patterns.`;
 
-      // Add SVG URLs if available
-      if (figmaState.status === "success" && figmaState.svgUrls.length > 0) {
-        const svgUrlsList = figmaState.svgUrls.map((url, idx) => `${idx + 1}. ${url}`).join("\n");
-        fullDescription += `\n\n**Design SVG URLs (download and use these):**\n${svgUrlsList}`;
+      // Add Figma design information if available
+      if (figmaState.status === "success" && figmaUrl) {
+        fullDescription += `\n\n**Figma Design:**\nURL: ${figmaUrl}\nAccess Token: Use the FIGMA_API_KEY environment variable or fetch from the API\n\nYou can use the Figma API to fetch the design details and export assets as needed.`;
       } const res = await fetch("/api/copilot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -618,48 +629,72 @@ export default function WorkflowPage() {
                 <span className="text-xs uppercase tracking-[0.3em] text-white/50">
                   {workItemTemplates[workItemType].titleLabel}
                 </span>
-                <input
-                  value={workItem.title}
-                  onChange={(event) =>
-                    setWorkItem((prev) => ({
-                      ...prev,
-                      title: event.target.value,
-                    }))
-                  }
-                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-white focus:border-white/40 focus:outline-none"
-                />
+                <div className="relative rounded-2xl border border-white/10 bg-white/5 text-base text-white focus-within:border-white/40 transition min-h-[64px]">
+                  {hasValue(workItem.title) ? (
+                    <div className="pointer-events-none absolute inset-0 px-4 py-3">
+                      <DiffOverlay value={workItem.title} changes={latestDiffs.title} />
+                    </div>
+                  ) : null}
+                  <input
+                    value={workItem.title}
+                    onChange={(event) =>
+                      setWorkItemWithDiff((prev) => ({
+                        ...prev,
+                        title: event.target.value,
+                      }))
+                    }
+                    className={`relative w-full bg-transparent px-4 py-3 text-base caret-white placeholder:text-white/40 focus:outline-none ${hasValue(workItem.title) ? "text-transparent selection:bg-white/0" : "text-white"}`}
+                  />
+                </div>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-white/70">
                 <span className="text-xs uppercase tracking-[0.3em] text-white/50">
                   {workItemTemplates[workItemType].descriptionLabel}
                 </span>
-                <textarea
-                  value={workItem.description}
-                  onChange={(event) =>
-                    setWorkItem((prev) => ({
-                      ...prev,
-                      description: event.target.value,
-                    }))
-                  }
-                  className="min-h-[120px] rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-white focus:border-white/40 focus:outline-none"
-                />
+                <div className="relative rounded-2xl border border-white/10 bg-white/5 text-base text-white focus-within:border-white/40 transition min-h-[160px]">
+                  {hasValue(workItem.description) ? (
+                    <div className="pointer-events-none absolute inset-0 px-4 py-3">
+                      <DiffOverlay value={workItem.description} changes={latestDiffs.description} />
+                    </div>
+                  ) : null}
+                  <textarea
+                    value={workItem.description}
+                    onChange={(event) =>
+                      setWorkItemWithDiff((prev) => ({
+                        ...prev,
+                        description: event.target.value,
+                      }))
+                    }
+                    className={`relative min-h-[160px] w-full resize-none bg-transparent px-4 py-3 text-base caret-white placeholder:text-white/40 focus:outline-none leading-relaxed ${hasValue(workItem.description) ? "text-transparent selection:bg-white/0" : "text-white"}`}
+                  />
+                </div>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-white/70">
                 <span className="text-xs uppercase tracking-[0.3em] text-white/50">
                   {workItemTemplates[workItemType].listLabel}
                 </span>
-                <textarea
-                  value={workItem.acceptance.join('\n\n')}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    const lines = value.split('\n\n').filter(l => l.trim());
-                    setWorkItem((prev) => ({ ...prev, acceptance: lines }));
-                  }}
-                  rows={Math.max(5, workItem.acceptance.length * 3)}
-                  className="min-h-[120px] rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white focus:border-white/40 focus:outline-none leading-relaxed"
-                />
+                <div className="relative rounded-2xl border border-white/10 bg-white/5 text-sm text-white focus-within:border-white/40 transition min-h-[160px]">
+                  {hasValue(workItem.acceptance.join('\n\n')) ? (
+                    <div className="pointer-events-none absolute inset-0 px-4 py-3">
+                      <DiffOverlay
+                        value={workItem.acceptance.join('\n\n')}
+                        changes={latestDiffs.acceptance}
+                      />
+                    </div>
+                  ) : null}
+                  <textarea
+                    value={workItem.acceptance.join('\n\n')}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      const lines = value.split('\n\n').filter((l) => l.trim());
+                      setWorkItemWithDiff((prev) => ({ ...prev, acceptance: lines }));
+                    }}
+                    rows={Math.max(5, workItem.acceptance.length * 3)}
+                    className={`relative min-h-[160px] w-full resize-none bg-transparent px-4 py-3 text-sm caret-white placeholder:text-white/40 focus:outline-none leading-relaxed ${hasValue(workItem.acceptance.join('\n\n')) ? "text-transparent selection:bg-white/0" : "text-white"}`}
+                  />
+                </div>
               </label>
             </div>
             <div className="flex flex-col gap-2 pt-4 flex-shrink-0">
@@ -795,19 +830,19 @@ export default function WorkflowPage() {
                   ) : (
                     <button
                       type="button"
-                        onClick={fetchFigmaDesign}
-                        disabled={!figmaUrl.trim()}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50 flex-shrink-0"
-                      >
-                        <Image
-                          src="/figma.png"
-                          alt="Figma"
-                          width={12}
-                          height={12}
-                          className="rounded-sm object-contain"
-                        />
-                        Fetch
-                      </button>
+                      onClick={fetchFigmaDesign}
+                      disabled={!figmaUrl.trim()}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50 flex-shrink-0"
+                    >
+                      <Image
+                        src="/figma.png"
+                        alt="Figma"
+                        width={12}
+                        height={12}
+                        className="rounded-sm object-contain"
+                      />
+                      Fetch
+                    </button>
                   )}
                 </div>
                 {figmaState.status === "success" && (
@@ -825,20 +860,20 @@ export default function WorkflowPage() {
                     Running...
                   </span>
                 ) : (
-                    <button
-                      type="button"
-                      onClick={triggerCopilot}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50 flex-shrink-0"
-                    >
-                      <Image
-                        src="/github-copilot.png"
-                        alt="Copilot"
-                        width={12}
-                        height={12}
-                        className="rounded-sm object-contain"
-                      />
-                      Copilot
-                    </button>
+                  <button
+                    type="button"
+                    onClick={triggerCopilot}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50 flex-shrink-0"
+                  >
+                    <Image
+                      src="/github-copilot.png"
+                      alt="Copilot"
+                      width={12}
+                      height={12}
+                      className="rounded-sm object-contain"
+                    />
+                    Copilot
+                  </button>
                 )}
               </div>
             </div>
@@ -848,6 +883,32 @@ export default function WorkflowPage() {
     </div>
   );
 }
+
+function DiffOverlay({ value, changes }: { value: string; changes?: Change[] }) {
+  if (!hasValue(value)) return null;
+  const hasDiff = changes?.some((part) => part.added || part.removed);
+  const viewSegments = hasDiff
+    ? (changes || []).filter((part) => !part.removed)
+    : [{ value, added: false } as Change];
+  if (viewSegments.length === 0) return null;
+
+  return (
+    <div className="text-base text-white whitespace-pre-wrap leading-relaxed">
+      {viewSegments.map((part, index) => (
+        <span
+          key={`${part.value}-${index}`}
+          className={part.added
+            ? "rounded-full bg-gradient-to-r from-[#a855f7]/40 to-[#6366f1]/30 px-1 text-white"
+            : "text-white"}
+        >
+          {part.value}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+const DiffPreview = DiffOverlay;
 
 function ChatBubble({ message }: { message: ChatMessage }) {
   const isAssistant = message.role === "assistant";

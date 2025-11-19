@@ -16,121 +16,100 @@ export class ConfluenceService {
   }
 
   /**
-   * Converts wiki markup to Confluence Storage Format (the format Confluence API expects)
+   * Converts wiki markup to Confluence Storage Format (HTML)
    */
-  private wikiMarkupToStorageFormat(wikiMarkup: string): any {
-    // For now, we'll send wiki markup and let Confluence convert it
-    // Or we can use the storage format. Let's use storage format for better control
-    
-    // Split content into sections based on headings
-    const lines = wikiMarkup.split("\n");
-    const content: any[] = [];
-    let currentParagraph: string[] = [];
+  private wikiMarkupToStorageFormat(wikiMarkup: string): string {
+    let html = '';
+    const lines = wikiMarkup.split('\n');
+    let inCodeBlock = false;
+    let codeBlockContent: string[] = [];
+    let listItems: string[] = [];
+    let listType: 'ul' | 'ol' | null = null;
 
-    for (const line of lines) {
+    const flushList = () => {
+      if (listItems.length > 0 && listType) {
+        const tag = listType === 'ul' ? 'ul' : 'ol';
+        html += `<${tag}>`;
+        listItems.forEach(item => {
+          html += `<li><p>${this.escapeHtml(item)}</p></li>`;
+        });
+        html += `</${tag}>`;
+        listItems = [];
+        listType = null;
+      }
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       const trimmed = line.trim();
-      
-      // Heading detection
-      if (trimmed.startsWith("h1.")) {
-        if (currentParagraph.length > 0) {
-          content.push({
-            type: "paragraph",
-            content: [{ type: "text", text: currentParagraph.join(" ") }],
-          });
-          currentParagraph = [];
+
+      // Handle code blocks
+      if (trimmed.startsWith('{code') || trimmed.startsWith('{noformat')) {
+        flushList();
+        inCodeBlock = true;
+        continue;
+      }
+      if ((trimmed === '{code}' || trimmed === '{noformat}') && inCodeBlock) {
+        html += `<ac:structured-macro ac:name="code"><ac:plain-text-body><![CDATA[${codeBlockContent.join('\n')}]]></ac:plain-text-body></ac:structured-macro>`;
+        codeBlockContent = [];
+        inCodeBlock = false;
+        continue;
+      }
+      if (inCodeBlock) {
+        codeBlockContent.push(line);
+        continue;
+      }
+
+      // Handle headings
+      if (trimmed.startsWith('h1.')) {
+        flushList();
+        html += `<h1>${this.escapeHtml(trimmed.substring(3).trim())}</h1>`;
+      } else if (trimmed.startsWith('h2.')) {
+        flushList();
+        html += `<h2>${this.escapeHtml(trimmed.substring(3).trim())}</h2>`;
+      } else if (trimmed.startsWith('h3.')) {
+        flushList();
+        html += `<h3>${this.escapeHtml(trimmed.substring(3).trim())}</h3>`;
+      } else if (trimmed.startsWith('h4.')) {
+        flushList();
+        html += `<h4>${this.escapeHtml(trimmed.substring(3).trim())}</h4>`;
+      }
+      // Handle bullet lists
+      else if (trimmed.startsWith('* ')) {
+        if (listType !== 'ul') {
+          flushList();
+          listType = 'ul';
         }
-        content.push({
-          type: "heading",
-          attrs: { level: 1 },
-          content: [{ type: "text", text: trimmed.substring(3).trim() }],
-        });
-      } else if (trimmed.startsWith("h2.")) {
-        if (currentParagraph.length > 0) {
-          content.push({
-            type: "paragraph",
-            content: [{ type: "text", text: currentParagraph.join(" ") }],
-          });
-          currentParagraph = [];
+        listItems.push(trimmed.substring(2).trim());
+      }
+      // Handle numbered lists
+      else if (trimmed.match(/^\d+\.\s/)) {
+        if (listType !== 'ol') {
+          flushList();
+          listType = 'ol';
         }
-        content.push({
-          type: "heading",
-          attrs: { level: 2 },
-          content: [{ type: "text", text: trimmed.substring(3).trim() }],
-        });
-      } else if (trimmed.startsWith("h3.")) {
-        if (currentParagraph.length > 0) {
-          content.push({
-            type: "paragraph",
-            content: [{ type: "text", text: currentParagraph.join(" ") }],
-          });
-          currentParagraph = [];
-        }
-        content.push({
-          type: "heading",
-          attrs: { level: 3 },
-          content: [{ type: "text", text: trimmed.substring(3).trim() }],
-        });
-      } else if (trimmed.startsWith("* ") || trimmed.match(/^\d+\./)) {
-        // Bullet or numbered list
-        if (currentParagraph.length > 0) {
-          content.push({
-            type: "paragraph",
-            content: [{ type: "text", text: currentParagraph.join(" ") }],
-          });
-          currentParagraph = [];
-        }
-        // Simple list item - in a real implementation, we'd group list items
-        const listText = trimmed.replace(/^[*\d+.]\s*/, "");
-        content.push({
-          type: "paragraph",
-          content: [{ type: "text", text: `• ${listText}` }],
-        });
-      } else if (trimmed === "" && currentParagraph.length > 0) {
-        // Empty line - flush current paragraph
-        content.push({
-          type: "paragraph",
-          content: [{ type: "text", text: currentParagraph.join(" ") }],
-        });
-        currentParagraph = [];
-      } else if (trimmed.startsWith("{code")) {
-        // Code block - simple implementation
-        if (currentParagraph.length > 0) {
-          content.push({
-            type: "paragraph",
-            content: [{ type: "text", text: currentParagraph.join(" ") }],
-          });
-          currentParagraph = [];
-        }
-        // Extract code content (simplified)
-        const codeContent = trimmed.replace(/^{code[^}]*}/, "").replace(/{code}$/, "");
-        content.push({
-          type: "codeBlock",
-          attrs: { language: "text" },
-          content: [{ type: "text", text: codeContent }],
-        });
-      } else if (trimmed.length > 0) {
-        currentParagraph.push(trimmed);
+        listItems.push(trimmed.replace(/^\d+\.\s*/, ''));
+      }
+      // Handle paragraphs
+      else if (trimmed.length > 0) {
+        flushList();
+        html += `<p>${this.escapeHtml(trimmed)}</p>`;
+      } else {
+        flushList();
       }
     }
 
-    // Flush remaining paragraph
-    if (currentParagraph.length > 0) {
-      content.push({
-        type: "paragraph",
-        content: [{ type: "text", text: currentParagraph.join(" ") }],
-      });
-    }
+    flushList();
+    return html;
+  }
 
-    return {
-      type: "doc",
-      version: 1,
-      content: content.length > 0 ? content : [
-        {
-          type: "paragraph",
-          content: [{ type: "text", text: wikiMarkup }],
-        },
-      ],
-    };
+  private escapeHtml(text: string): string {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   /**
@@ -140,15 +119,17 @@ export class ConfluenceService {
     // Determine space key - use provided, env variable, or default to user's personal space (~)
     const space = spaceKey || this.env.CONFLUENCE_SPACE_KEY || this.env.JIRA_PROJECT_KEY || "~";
     
-    // Use wiki markup format - Confluence can convert it
+    // Convert wiki markup to storage format (HTML)
+    const storageContent = this.wikiMarkupToStorageFormat(wikiContent);
+    
     const body = {
       type: "page",
       title,
       space: { key: space },
       body: {
         storage: {
-          value: wikiContent,
-          representation: "wiki", // Use wiki representation - Confluence will convert it
+          value: storageContent,
+          representation: "storage",
         },
       },
     };

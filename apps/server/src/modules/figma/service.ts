@@ -1,35 +1,30 @@
 import { getFigmaFile, getFigmaSvgs } from "../../providers/figma.js";
 import type { FigmaFileRequest, FigmaSvgRequest } from "./schema.js";
-import { Octokit } from "@octokit/rest";
+import { randomBytes } from "crypto";
 
-async function uploadSvgToGist(svgContent: string, fileName: string): Promise<string> {
-    const githubToken = process.env.GITHUB_TOKEN;
-    if (!githubToken) {
-        throw new Error("GITHUB_TOKEN not configured");
+// Simple in-memory storage for SVG content (expires after 1 hour)
+const svgStorage = new Map<string, { content: string; timestamp: number }>();
+
+// Clean up expired SVGs every 10 minutes
+setInterval(() => {
+    const now = Date.now();
+    const oneHour = 60 * 60 * 1000;
+    for (const [id, data] of svgStorage.entries()) {
+        if (now - data.timestamp > oneHour) {
+            svgStorage.delete(id);
+        }
     }
+}, 10 * 60 * 1000);
 
-    const octokit = new Octokit({ auth: githubToken });
+function storeSvg(content: string): string {
+    const id = randomBytes(16).toString("hex");
+    svgStorage.set(id, { content, timestamp: Date.now() });
+    return id;
+}
 
-    const gist = await octokit.gists.create({
-        description: `Figma SVG export: ${fileName}`,
-        public: false,
-        files: {
-            [`${fileName}.svg`]: {
-                content: svgContent,
-            },
-        },
-    });
-
-    if (!gist.data.files) {
-        throw new Error("Failed to create gist");
-    }
-
-    const gistFile = gist.data.files[`${fileName}.svg`];
-    if (!gistFile || !gistFile.raw_url) {
-        throw new Error("Failed to get gist URL");
-    }
-
-    return gistFile.raw_url;
+export function getSvgById(id: string): string | null {
+    const data = svgStorage.get(id);
+    return data ? data.content : null;
 }
 
 export async function fetchFigmaFile(request: FigmaFileRequest) {
@@ -55,18 +50,14 @@ export async function fetchFigmaSvgs(request: FigmaSvgRequest) {
         throw new Error("Failed to fetch Figma SVGs. Please check the URL and node IDs.");
     }
 
-    // Upload each SVG to a Gist and return URLs instead of content
+    // Store each SVG in memory and return URLs to server endpoint
+    const baseUrl = process.env.SERVER_BASE_URL || "http://localhost:4000";
     const svgUrls: Record<string, string> = {};
 
     for (const [nodeId, svgContent] of Object.entries(result)) {
         if (svgContent) {
-            try {
-                const url = await uploadSvgToGist(svgContent, `node-${nodeId}`);
-                svgUrls[nodeId] = url;
-            } catch (error) {
-                console.error(`Failed to upload SVG for node ${nodeId}:`, error);
-                svgUrls[nodeId] = "";
-            }
+            const id = storeSvg(svgContent);
+            svgUrls[nodeId] = `${baseUrl}/api/figma/svg/${id}`;
         }
     }
 
