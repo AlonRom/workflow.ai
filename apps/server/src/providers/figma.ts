@@ -1,3 +1,5 @@
+import { optimize } from 'svgo';
+
 export type FigmaFileOptions = {
     url: string;
     nodeIds?: string[];
@@ -158,7 +160,16 @@ export async function getFigmaSvgs({
             try {
                 const svgRes = await fetch(svgUrl);
                 if (svgRes.ok) {
-                    svgContents[nodeId] = await svgRes.text();
+                    const rawSvg = await svgRes.text();
+                    // Optimize SVG using SVGO
+                    const result = optimize(rawSvg, {
+                        plugins: [
+                            'preset-default',
+                            'removeDoctype',
+                            'removeComments',
+                        ],
+                    });
+                    svgContents[nodeId] = result.data;
                 } else {
                     console.error(`Failed to fetch SVG for node ${nodeId}`);
                     svgContents[nodeId] = "";

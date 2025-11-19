@@ -252,7 +252,7 @@ export class CopilotCLIService {
     prUrl?: string;
     error?: string;
   }> {
-    const prompt = `In repository ${repository}: ${description}. Create a pull request to add these changes.`;
+    const prompt = `Clone repository ${repository} to a temporary directory, make the following changes, and create a pull request: ${description}`;
 
     const result = await this.runPrompt(prompt, {
       allowAllTools: true,

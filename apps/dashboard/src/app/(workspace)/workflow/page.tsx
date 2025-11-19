@@ -139,6 +139,13 @@ export default function WorkflowPage() {
     | { status: "success"; prUrl?: string }
     | { status: "error"; message: string }
   >({ status: "idle" });
+  const [figmaUrl, setFigmaUrl] = useState("");
+  const [figmaState, setFigmaState] = useState<
+    | { status: "idle" }
+    | { status: "fetching" }
+    | { status: "success"; fileName: string; svgUrls: string[] }
+    | { status: "error"; message: string }
+  >({ status: "idle" });
 
   const parseStructuredResponse = (content: string, type: WorkItemType) => {
     // Extract fields using regex to handle both multi-line and single-line formats
@@ -384,6 +391,66 @@ export default function WorkflowPage() {
     }
   };
 
+  const fetchFigmaDesign = async () => {
+    if (!figmaUrl.trim() || figmaState.status === "fetching") return;
+    setFigmaState({ status: "fetching" });
+    try {
+      // First, fetch file metadata to get the name
+      const fileRes = await fetch("/api/figma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: figmaUrl }),
+      });
+
+      if (!fileRes.ok) {
+        throw new Error("Failed to fetch Figma file");
+      }
+
+      const fileData = (await fileRes.json()) as { name: string; document: any };
+      const fileName = fileData.name;
+
+      // Extract all node IDs from the document
+      const nodeIds: string[] = [];
+      const extractNodeIds = (node: any) => {
+        if (node.id) nodeIds.push(node.id);
+        if (node.children) {
+          node.children.forEach(extractNodeIds);
+        }
+      };
+      extractNodeIds(fileData.document);
+
+      // Fetch SVGs for all nodes (limit to first 10 to avoid timeout)
+      const limitedNodeIds = nodeIds.slice(0, 10);
+      const svgRes = await fetch("/api/figma/svgs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: figmaUrl, nodeIds: limitedNodeIds }),
+      });
+
+      if (!svgRes.ok) {
+        throw new Error("Failed to fetch Figma SVGs");
+      }
+
+      const svgData = (await svgRes.json()) as Record<string, string>;
+      const svgUrls = Object.values(svgData).filter(url => url);
+
+      setFigmaState({ status: "success", fileName, svgUrls });
+
+      // Update work item title and add SVG URLs to acceptance criteria
+      const svgUrlsText = svgUrls.map((url, idx) => `${idx + 1}. ${url}`).join("\n");
+      setWorkItem((prev) => ({
+        ...prev,
+        title: `Design to code ${fileName}`,
+        acceptance: [...prev.acceptance, `\n**Design SVG URLs:**\n${svgUrlsText}`],
+      }));
+    } catch (error) {
+      setFigmaState({
+        status: "error",
+        message: "Unable to fetch Figma design. Check the URL and try again.",
+      });
+    }
+  };
+
   const triggerCopilot = async () => {
     if (copilotState.status === "generating") return;
     setCopilotState({ status: "generating" });
@@ -393,9 +460,13 @@ export default function WorkflowPage() {
       const taskDescription = workItem.description;
       const acceptanceCriteria = workItem.acceptance.join("\n");
 
-      const fullDescription = `${taskTitle}\n\n${taskDescription}\n\n**Acceptance Criteria:**\n${acceptanceCriteria}\n\nPlease implement this feature following existing code patterns.`;
+      let fullDescription = `${taskTitle}\n\n${taskDescription}\n\n**Acceptance Criteria:**\n${acceptanceCriteria}\n\nPlease implement this feature following existing code patterns.`;
 
-      const res = await fetch("/api/copilot", {
+      // Add SVG URLs if available
+      if (figmaState.status === "success" && figmaState.svgUrls.length > 0) {
+        const svgUrlsList = figmaState.svgUrls.map((url, idx) => `${idx + 1}. ${url}`).join("\n");
+        fullDescription += `\n\n**Design SVG URLs (download and use these):**\n${svgUrlsList}`;
+      } const res = await fetch("/api/copilot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -701,22 +772,50 @@ export default function WorkflowPage() {
                 </button>
               </div>
 
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs uppercase tracking-[0.3em] text-white/50 flex-1">Export design to Figma</p>
-                <button
-                  type="button"
-                  disabled
-                  className="inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50 flex-shrink-0"
-                >
-                  <Image
-                    src="/figma.png"
-                    alt="Figma"
-                    width={12}
-                    height={12}
-                    className="rounded-sm object-contain"
+              <div className="flex flex-col gap-2">
+                <p className="text-xs uppercase tracking-[0.3em] text-white/50">Import design from Figma</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={figmaUrl}
+                    onChange={(e) => setFigmaUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        fetchFigmaDesign();
+                      }
+                    }}
+                    placeholder="Paste Figma URL..."
+                    className="flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs text-white placeholder:text-white/40 focus:border-white/40 focus:outline-none"
                   />
-                  Figma
-                </button>
+                  {figmaState.status === "fetching" ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-500/20 border border-yellow-400/30 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-yellow-200">
+                      Fetching...
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                        onClick={fetchFigmaDesign}
+                        disabled={!figmaUrl.trim()}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50 flex-shrink-0"
+                      >
+                        <Image
+                          src="/figma.png"
+                          alt="Figma"
+                          width={12}
+                          height={12}
+                          className="rounded-sm object-contain"
+                        />
+                        Fetch
+                      </button>
+                  )}
+                </div>
+                {figmaState.status === "success" && (
+                  <p className="text-xs text-green-200">✓ Design loaded: {figmaState.fileName}</p>
+                )}
+                {figmaState.status === "error" && (
+                  <p className="text-xs text-red-300">{figmaState.message}</p>
+                )}
               </div>
 
               <div className="flex items-center justify-between gap-3">
