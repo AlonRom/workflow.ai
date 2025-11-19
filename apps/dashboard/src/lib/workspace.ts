@@ -41,7 +41,7 @@ export const workspaceSections: WorkspaceSection[] = [
     path: "/workflow",
     icon: MessageSquare,
     tag: "Workflow",
-    title: "WorkItem Workflow",
+    title: "WorkItem",
     description:
       "Iterate on requirements with an AI partner before handing them to Jira or GitHub.",
   },

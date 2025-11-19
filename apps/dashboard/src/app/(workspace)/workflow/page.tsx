@@ -2,8 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SectionHeader } from "@/components/SectionHeader";
-import { workspaceSectionMap } from "@/lib/workspace";
+import { Sparkles } from "lucide-react";
 
 type ChatMessage = {
   id: string;
@@ -12,34 +11,15 @@ type ChatMessage = {
   timestamp: string;
 };
 
-const section = workspaceSectionMap["/workflow"];
-
 const initialMessages: ChatMessage[] = [
   {
     id: "1",
     role: "assistant",
     content:
-      "Welcome! Describe the feature you’d like refined before we ship it to Jira.",
+      "Welcome! Describe the feature you'd like refined before we ship it to Jira.",
     timestamp: "09:00",
   },
-  {
-    id: "2",
-    role: "user",
-    content:
-      "Need a workflow so hackathon squads can chat through acceptance criteria before filing issues.",
-    timestamp: "09:01",
-  },
-  {
-    id: "3",
-    role: "assistant",
-    content:
-      "Great. Let’s iterate on the story until it’s ready. What outcome or metric proves success?",
-    timestamp: "09:02",
-  },
 ];
-
-const headerDescription =
-  "Co-write and execute the Jira work item with AI. Capture context, constraints, and acceptance criteria before handing off.";
 
 type WorkItemTemplate = {
   label: string;
@@ -408,12 +388,11 @@ export default function WorkflowPage() {
   }, [messages]);
 
   return (
-    <div className="flex flex-1 flex-col gap-8 overflow-hidden min-h-0">
-      <SectionHeader
-        tag={section.tag}
-        title={section.title}
-        description={headerDescription}
-      />
+    <div className="flex flex-1 flex-col gap-4 overflow-hidden min-h-0">
+      <span className="inline-flex items-center gap-2 self-start rounded-full bg-white/10 px-4 py-1 text-xs uppercase tracking-[0.4em] text-purple-200">
+        Live beta
+        <Sparkles className="h-3.5 w-3.5" />
+      </span>
 
       <div
         ref={containerRef}
@@ -430,7 +409,7 @@ export default function WorkflowPage() {
                 Workflow channel
               </p>
               <h3 className="text-lg font-semibold text-white">
-                Refine First
+              Co-write and execute the Jira work item with AI. Capture context, constraints, and acceptance criteria before handing off.
               </h3>
             </div>
             <div className="flex flex-wrap gap-2">
