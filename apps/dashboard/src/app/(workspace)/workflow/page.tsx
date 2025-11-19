@@ -721,21 +721,26 @@ export default function WorkflowPage() {
 
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs uppercase tracking-[0.3em] text-white/50 flex-1">Generate code with Copilot</p>
-                <button
-                  type="button"
-                  onClick={triggerCopilot}
-                  disabled={copilotState.status === "generating"}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50 flex-shrink-0"
-                >
-                  <Image
-                    src="/github-copilot.png"
-                    alt="Copilot"
-                    width={12}
-                    height={12}
-                    className="rounded-sm object-contain"
-                  />
-                  {copilotState.status === "generating" ? "..." : "Copilot"}
-                </button>
+                {copilotState.status === "generating" ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-500/20 border border-yellow-400/30 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-yellow-200">
+                    Running...
+                  </span>
+                ) : (
+                    <button
+                      type="button"
+                      onClick={triggerCopilot}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[#a855f7] to-[#6366f1] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-white transition hover:opacity-90 disabled:opacity-50 flex-shrink-0"
+                    >
+                      <Image
+                        src="/github-copilot.png"
+                        alt="Copilot"
+                        width={12}
+                        height={12}
+                        className="rounded-sm object-contain"
+                      />
+                      Copilot
+                    </button>
+                )}
               </div>
             </div>
           </div>
