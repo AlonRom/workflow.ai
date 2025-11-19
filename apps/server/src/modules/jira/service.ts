@@ -1,5 +1,11 @@
 import { type Env } from "../../config";
-import type { JiraIssueRequest } from "./schema";
+import { MockJiraMcp } from "../../providers/mock-jira-mcp";
+import type {
+  JiraInsight,
+  JiraInsightsRequest,
+  JiraInsightsResponse,
+  JiraIssueRequest,
+} from "./schema";
 
 const ISSUE_TYPE_MAP: Record<
   JiraIssueRequest["workItemType"],
@@ -13,6 +19,8 @@ const ISSUE_TYPE_MAP: Record<
 };
 
 export class JiraService {
+  private readonly mockMcp = new MockJiraMcp();
+
   constructor(private readonly env: Env) {}
 
   private get authHeader() {
@@ -89,6 +97,30 @@ export class JiraService {
       type: "doc",
       version: 1,
       content,
+    };
+  }
+
+  async fetchInsights(
+    payload: JiraInsightsRequest,
+  ): Promise<JiraInsightsResponse> {
+    const results = this.mockMcp.fetchInsights(payload.query).map<JiraInsight>(
+      (insight) => ({
+        id: insight.id,
+        title: insight.title,
+        summary: insight.summary,
+        metricLabel: insight.metricLabel,
+        metricValue: insight.metricValue,
+        trend: insight.trend,
+        impact: insight.impact,
+        recommendations: insight.recommendations,
+        lastUpdated: insight.lastUpdated,
+      }),
+    );
+
+    return {
+      query: payload.query,
+      generatedAt: new Date().toISOString(),
+      results,
     };
   }
 }
