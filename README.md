@@ -84,5 +84,3 @@ npm run dev:stack:open   # same as above but opens http://localhost:3000
 
 When deploying, set `SERVER_BASE_URL` or `CHAT_API_BASE_URL` so the dashboard
 knows where to reach the backend.
-
-
