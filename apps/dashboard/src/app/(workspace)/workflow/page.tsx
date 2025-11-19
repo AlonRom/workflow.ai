@@ -442,62 +442,25 @@ export default function WorkflowPage() {
 
   const fetchFigmaDesign = async () => {
     if (!figmaUrl.trim() || figmaState.status === "fetching") return;
-    setFigmaState({ status: "fetching" });
-    try {
-      // First, fetch file metadata to get the name
-      const fileRes = await fetch("/api/figma", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: figmaUrl }),
-      });
-
-      if (!fileRes.ok) {
-        throw new Error("Failed to fetch Figma file");
-      }
-
-      const fileData = (await fileRes.json()) as { name: string; document: any };
-      const fileName = fileData.name;
-
-      // Extract all node IDs from the document
-      const nodeIds: string[] = [];
-      const extractNodeIds = (node: any) => {
-        if (node.id) nodeIds.push(node.id);
-        if (node.children) {
-          node.children.forEach(extractNodeIds);
-        }
-      };
-      extractNodeIds(fileData.document);
-
-      // Fetch SVGs for all nodes (limit to first 10 to avoid timeout)
-      const limitedNodeIds = nodeIds.slice(0, 10);
-      const svgRes = await fetch("/api/figma/svgs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: figmaUrl, nodeIds: limitedNodeIds }),
-      });
-
-      if (!svgRes.ok) {
-        throw new Error("Failed to fetch Figma SVGs");
-      }
-
-      const svgData = (await svgRes.json()) as Record<string, string>;
-      const svgUrls = Object.values(svgData).filter(url => url);
-
-      setFigmaState({ status: "success", fileName, svgUrls });
-
-      // Update work item title and add SVG URLs to acceptance criteria
-      const svgUrlsText = svgUrls.map((url, idx) => `${idx + 1}. ${url}`).join("\n");
-      setWorkItem((prev) => ({
-        ...prev,
-        title: `Design to code ${fileName}`,
-        acceptance: [...prev.acceptance, `\n**Design SVG URLs:**\n${svgUrlsText}`],
-      }));
-    } catch (error) {
+    
+    // Just validate URL format and set state
+    const figmaUrlPattern = /figma\.com\/(file|design)\/[a-zA-Z0-9]+/;
+    if (!figmaUrlPattern.test(figmaUrl)) {
       setFigmaState({
         status: "error",
-        message: "Unable to fetch Figma design. Check the URL and try again.",
+        message: "Invalid Figma URL format. Expected: https://figma.com/file/... or https://figma.com/design/...",
       });
+      return;
     }
+
+    setFigmaState({ status: "success", fileName: "Figma Design", svgUrls: [] });
+
+    // Update work item with Figma URL added to both description and acceptance criteria
+    setWorkItem((prev) => ({
+      ...prev,
+      description: prev.description,
+      acceptance: [...prev.acceptance, `\n**Figma Design:** ${figmaUrl}`],
+    }));
   };
 
   const triggerCopilot = async () => {
@@ -509,12 +472,11 @@ export default function WorkflowPage() {
       const taskDescription = workItem.description;
       const acceptanceCriteria = workItem.acceptance.join("\n");
 
-      let fullDescription = `${taskTitle}\n\n${taskDescription}\n\n**Acceptance Criteria:**\n${acceptanceCriteria}\n\nPlease implement this feature following existing code patterns.`;
+      let fullDescription = `${taskTitle}\n\n${taskDescription}\n\n**Acceptance Criteria:**\n${acceptanceCriteria}\n\n**DEMO INSTRUCTIONS (URGENT):**\n1. Don't write tests - skip all testing\n2. Do the task short and quickly - minimal viable implementation\n3. Don't validate yourself - no extra checks or validations\n4. This is for a live demo with very limited time\n\nPlease implement this feature following existing code patterns.`;
 
-      // Add SVG URLs if available
-      if (figmaState.status === "success" && figmaState.svgUrls.length > 0) {
-        const svgUrlsList = figmaState.svgUrls.map((url, idx) => `${idx + 1}. ${url}`).join("\n");
-        fullDescription += `\n\n**Design SVG URLs (download and use these):**\n${svgUrlsList}`;
+      // Add Figma design information if available
+      if (figmaState.status === "success" && figmaUrl) {
+        fullDescription += `\n\n**Figma Design:**\nURL: ${figmaUrl}\nAccess Token: Use the FIGMA_API_KEY environment variable or fetch from the API\n\nYou can use the Figma API to fetch the design details and export assets as needed.`;
       } const res = await fetch("/api/copilot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

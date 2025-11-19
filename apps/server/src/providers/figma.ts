@@ -157,6 +157,12 @@ export async function getFigmaSvgs({
         const svgContents: Record<string, string> = {};
 
         for (const [nodeId, svgUrl] of Object.entries(data.images)) {
+            // Skip if URL is null or empty (Figma returns null for non-exportable nodes)
+            if (!svgUrl) {
+                console.log(`Skipping node ${nodeId}: no SVG URL returned by Figma`);
+                continue;
+            }
+
             try {
                 const svgRes = await fetch(svgUrl);
                 if (svgRes.ok) {
@@ -171,12 +177,10 @@ export async function getFigmaSvgs({
                     });
                     svgContents[nodeId] = result.data;
                 } else {
-                    console.error(`Failed to fetch SVG for node ${nodeId}`);
-                    svgContents[nodeId] = "";
+                    console.error(`Failed to fetch SVG for node ${nodeId}: HTTP ${svgRes.status}`);
                 }
             } catch (error) {
                 console.error(`Error fetching SVG content for node ${nodeId}:`, error);
-                svgContents[nodeId] = "";
             }
         }
 

@@ -42,7 +42,32 @@ export async function getFigmaSvgsHandler(
     }
 }
 
+export async function getSvgHandler(
+    request: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply
+) {
+    try {
+        const { id } = request.params;
+        const { getSvgById } = await import("./service.js");
+        const svgContent = getSvgById(id);
+
+        if (!svgContent) {
+            return reply.status(404).send({ error: "SVG not found or expired" });
+        }
+
+        return reply
+            .header("Content-Type", "image/svg+xml")
+            .header("Cache-Control", "public, max-age=3600")
+            .send(svgContent);
+    } catch (error) {
+        return reply.status(500).send({
+            error: "An unexpected error occurred",
+        });
+    }
+}
+
 export async function registerFigmaRoutes(app: FastifyInstance) {
     app.post("/api/figma/file", getFigmaFileHandler);
     app.post("/api/figma/svgs", getFigmaSvgsHandler);
+    app.get("/api/figma/svg/:id", getSvgHandler);
 }
