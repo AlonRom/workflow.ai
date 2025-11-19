@@ -9,6 +9,7 @@ export async function POST(request: Request) {
   const payload = await request.json();
 
   try {
+    // Step 1: Create Jira issue as before
     const res = await fetch(`${API_BASE_URL}/api/jira/issues`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -20,9 +21,11 @@ export async function POST(request: Request) {
       throw new Error(`Upstream Jira API failed: ${res.status}`);
     }
 
-    const body = await res.json();
+    const jiraBody = await res.json();
 
-    return NextResponse.json(body);
+
+
+    return NextResponse.json(jiraBody);
   } catch (error) {
     console.error("Jira API proxy error", error);
     return NextResponse.json(
