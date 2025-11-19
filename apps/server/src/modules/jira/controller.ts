@@ -1,5 +1,8 @@
 import type { FastifyInstance } from "fastify";
-import { jiraIssueRequestSchema } from "./schema";
+import {
+  jiraInsightsRequestSchema,
+  jiraIssueRequestSchema,
+} from "./schema";
 import { JiraService } from "./service";
 import { loadConfig } from "../../config";
 
@@ -27,6 +30,27 @@ export async function registerJiraRoutes(app: FastifyInstance) {
       return reply.status(502).send({
         error: "JIRA_CREATE_FAILED",
         message: "Unable to create Jira issue.",
+      });
+    }
+  });
+
+  app.post("/api/jira/insights", async (request, reply) => {
+    const parsed = jiraInsightsRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "INVALID_QUERY",
+        details: parsed.error.flatten(),
+      });
+    }
+
+    try {
+      const insights = await jiraService.fetchInsights(parsed.data);
+      return reply.send(insights);
+    } catch (error) {
+      request.log.error(error);
+      return reply.status(502).send({
+        error: "MOCK_JIRA_INSIGHTS_FAILED",
+        message: "Unable to generate mock Jira insights.",
       });
     }
   });

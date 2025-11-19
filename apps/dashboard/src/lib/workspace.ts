@@ -4,11 +4,13 @@ import {
   LayoutDashboard,
   MessageSquare,
   Settings,
+  Star,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export type WorkspacePath =
   | "/dashboard"
+  | "/insights"
   | "/workflow"
   | "/projects"
   | "/library"
@@ -34,6 +36,16 @@ export const workspaceSections: WorkspaceSection[] = [
     title: "Workflow HQ",
     description:
       "Track idea funnel health, Jira throughput, and AI refinement sessions at a glance.",
+  },
+  {
+    id: "insights",
+    label: "Insights",
+    path: "/insights",
+    icon: Star,
+    tag: "Insights",
+    title: "Insights",
+    description:
+      "Turn any natural language question into Jira-powered insights surfaced via the mock MCP.",
   },
   {
     id: "workflow",
