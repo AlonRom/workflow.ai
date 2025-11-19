@@ -211,7 +211,7 @@ export default function WorkflowPage() {
     setDraft("");
     setIsReplying(true);
 
-    // Buffer assistant reply and only add to chat if not a full structured template
+    // Buffer assistant reply
     let assistantContent = "";
 
     fetch("/api/chat/stream", {
@@ -248,25 +248,31 @@ export default function WorkflowPage() {
             }
           }
         }
-        // After streaming, decide if reply is a structured template
-        const isFullTemplate = /Title:\s*.+\nDescription:\s*.+((Acceptance Criteria:)|(Steps:))\s*\d+\.\s*/is.test(assistantContent);
 
-        if (!isFullTemplate) {
-          // Add to chat if not a full template (show partial updates and regular chat)
-          const assistantId = crypto.randomUUID();
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: assistantId,
-              role: "assistant",
-              content: assistantContent,
-              timestamp: new Date().toLocaleTimeString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-            },
-          ]);
+        // Separate chat response from template
+        // Template starts with "Title:" or "Description:" or "Acceptance Criteria:" or "Steps:"
+        const templateMatch = assistantContent.match(/\n(Title:|Description:|Acceptance Criteria:|Steps:)/);
+        let chatResponse = assistantContent;
+
+        if (templateMatch && templateMatch.index !== undefined) {
+          // Found a template, extract just the chat part
+          chatResponse = assistantContent.substring(0, templateMatch.index).trim();
         }
+
+        // Only add the chat response (without template) to the message
+        const assistantId = crypto.randomUUID();
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: assistantId,
+            role: "assistant",
+            content: chatResponse,
+            timestamp: new Date().toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          },
+        ]);
       })
       .catch(() => {
         // Show error in chat
@@ -286,7 +292,7 @@ export default function WorkflowPage() {
       })
       .finally(() => {
         setIsReplying(false);
-        // Always parse the full assistantContent for sidebar updates
+        // Parse template from the full response (if it exists) - use full assistantContent
         const parsed = parseStructuredResponse(assistantContent, workItemType);
         if (parsed) {
           setWorkItem((prev) => ({ ...prev, ...parsed }));
@@ -297,9 +303,7 @@ export default function WorkflowPage() {
           }
         }
       });
-  };
-
-  const handleTypeChange = (type: WorkItemType) => {
+  }; const handleTypeChange = (type: WorkItemType) => {
     setWorkItemType(type);
     setWorkItem({
       ...workItemTemplates[type],
